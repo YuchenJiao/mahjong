@@ -29,6 +29,8 @@ import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } fro
 import { Tile } from "./Tile";
 import { useTableFeedback } from "./feedback/useTableFeedback";
 import { eventLabel } from "./feedback/events";
+import { CenterFeedback } from "./feedback/CenterFeedback";
+import { voiceId, voiceKind } from "./feedback/voice";
 import "./style.css";
 import { useRoom } from "./online/useRoom";
 import { RoomPanel } from "./online/RoomPanel";
@@ -431,8 +433,8 @@ function App() {
     [setup, setSetup] = useState(!validInitial && !online.session && !new URL(location.href).searchParams.has("room"));
   const [selected, setSelected] = useState<number[]>([]),
     [prefs, setPrefs] = useState(
-      { hints: true, sound: true, voice: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
-        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
+      { hints: true, sound: true, voice: true, voiceChoice: "auto", voiceRate: .92, speed: 650, assistantStyle: "balanced" as PlayStyle,
+        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; voiceChoice: string; voiceRate: number; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
     );
   const [paused, setPaused] = useState(false),
     [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
@@ -442,7 +444,7 @@ function App() {
     [notice, setNotice] = useState(""),
     [saveWarning, setSaveWarning] = useState("");
   const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
-  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound);
+  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound, prefs.voiceChoice, prefs.voiceRate);
   const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
   useEffect(() => {
     initCore()
@@ -701,7 +703,7 @@ function App() {
   if (online.pending) status = `正在提交${online.pending.type === "claim" || online.pending.type === "act" ? actionName(online.pending.action.type) : "操作"}…`;
   else if (online.room?.game?.pending?.responses[0] && online.room.game.pending.actions[0].length) status = `已选择${actionName(online.room.game.pending.responses[0].type)}，等待其他玩家`;
   return (
-    <div className={`app ${replay ? "is-replay" : ""}`} onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
+    <div className={`app ${replay ? "is-replay" : ""}`} translate="no" onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">一</span>
@@ -786,6 +788,20 @@ function App() {
                 onChange={e => setPrefs({ ...prefs, voice: e.target.checked })} />
               语音
             </label>
+            <label>音色
+              <select className="voice-select" aria-label="播报音色" disabled={!feedback.supported || !prefs.voice} value={prefs.voiceChoice}
+                onChange={e => setPrefs({ ...prefs, voiceChoice: e.target.value })}>
+                <option value="auto">自动 · 优先柔和女声</option>
+                {feedback.voices.map(v => <option key={voiceId(v)} value={voiceId(v)}>{v.name}{voiceKind(v) === "female" ? " · 女声" : ""}</option>)}
+                {prefs.voiceChoice !== "auto" && !feedback.voices.some(v => voiceId(v) === prefs.voiceChoice) && <option value={prefs.voiceChoice}>原音色不可用 · 自动选择</option>}
+              </select>
+            </label>
+            <label>语速
+              <select aria-label="播报语速" disabled={!prefs.voice || !feedback.supported} value={prefs.voiceRate}
+                onChange={e => setPrefs({ ...prefs, voiceRate: Number(e.target.value) })}>
+                <option value={.85}>舒缓</option><option value={.92}>柔和</option><option value={1.05}>轻快</option>
+              </select>
+            </label>
             <button className="voice-preview" disabled={!feedback.supported || !prefs.voice} onClick={feedback.preview}>试听语音</button>
             <button
               onClick={() => setPaused(!paused)}
@@ -806,6 +822,9 @@ function App() {
           </div>
         </div>
         {(feedback.voiceError || !feedback.supported) && <p className="voice-note" role="status">{feedback.voiceError || "此浏览器不支持语音播报；可继续正常打牌。"}</p>}
+        {prefs.voice && feedback.supported && feedback.voicesLoaded && <p className="voice-current">
+          {feedback.selectedVoice ? `当前音色：${feedback.selectedVoice.name}${voiceKind(feedback.selectedVoice) === "female" ? " · 女声" : " · 可换音色试听"}` : "未检测到可选中文音色，将尝试系统默认中文声音"}
+        </p>}
         <div className="layout">
           <div className="table-column">
             <div className="table">
@@ -871,17 +890,13 @@ function App() {
                         </div>
                       </div>
                     ))}
-                    <div className="center-marker">
-                      <span className="mode-seal">{game.config.mode === "sichuan" ? "川" : "国"}</span>
-                      {feedback.activity && <div className={`event-bubble event-${feedback.activity.kind}`} key={`${feedbackStream}:${feedback.activity.id}`}>
-                        <small>{display.players[feedback.activity.actor].name}</small><strong>{eventLabel(feedback.activity)}</strong>
-                      </div>}
-                      <p>{display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}</p>
-                      {(display.lastTile ?? latestDiscard?.tile) !== undefined && <div className="last-discard" key={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}>
-                        <Tile tile={display.lastTile ?? latestDiscard?.tile} />
-                        <b>{tileName((display.lastTile ?? latestDiscard?.tile)!)}</b>
-                      </div>}
-                    </div>
+                    <CenterFeedback mode={game.config.mode} activity={feedback.activity}
+                      actorName={feedback.activity ? display.players[feedback.activity.actor].name : ""}
+                      tile={display.lastTile ?? latestDiscard?.tile}
+                      caption={display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}
+                      eventKey={`${feedbackStream}:${feedback.activity?.id ?? 0}`}
+                      tileKey={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}
+                      replay={!!replay} />
                   </div>
                   <div className={`human-zone ${feedback.activity?.actor === 0 ? "action-flash" : ""}`}>
                     <div className="human-info">

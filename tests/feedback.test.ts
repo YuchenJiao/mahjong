@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventCursor, eventSpeech } from "../src/feedback/events";
-import { chineseVoice, VoiceAnnouncer } from "../src/feedback/voice";
+import { chineseVoice, chineseVoices, voiceId, voiceKind, VoiceAnnouncer } from "../src/feedback/voice";
 import type { SpeechPlatform } from "../src/feedback/voice";
 import type { TableEvent } from "../src/engine/types";
 
@@ -10,9 +10,9 @@ function fakeSpeech(throws = false) {
   const spoken: SpeechSynthesisUtterance[] = [];
   let cancelled = 0;
   const voices = [
-    { lang: "en-US", localService: true },
-    { lang: "zh-CN", localService: false },
-    { lang: "zh-CN", localService: true },
+    { name: "English", voiceURI: "en", lang: "en-US", localService: true },
+    { name: "Chinese remote", voiceURI: "remote", lang: "zh-CN", localService: false },
+    { name: "Chinese local", voiceURI: "local", lang: "zh-CN", localService: true },
   ] as SpeechSynthesisVoice[];
   const platform: SpeechPlatform = {
     synth: { speak: u => { if (throws) throw Error("unavailable"); spoken.push(u); }, cancel: () => { cancelled++; }, resume() {}, getVoices: () => voices },
@@ -78,4 +78,33 @@ test("Unsupported or broken speech platforms never interrupt gameplay", () => {
   const working=fakeSpeech(),w=new VoiceAnnouncer(working.platform,()=>errors++);
   w.announce(event(1));w.announce(event(2));working.spoken[0].onerror?.call(working.spoken[0],{} as SpeechSynthesisErrorEvent);
   assert.equal(working.spoken.length,1);assert.equal(errors,2);w.stop();
+});
+test("Available natural female voices outrank compact local voices and male neural voices", () => {
+  const voices = [
+    { name: "Ting-Ting (Compact)", voiceURI: "tt", lang: "zh-CN", localService: true },
+    { name: "Microsoft Yunxi Online (Natural)", voiceURI: "yx", lang: "zh-CN", localService: false },
+    { name: "Microsoft Xiaoxiao Online (Natural)", voiceURI: "xx", lang: "zh-CN", localService: false },
+    { name: "English female", voiceURI: "en", lang: "en-US", localService: true },
+  ] as SpeechSynthesisVoice[];
+  assert.equal(chineseVoice(voices), voices[2]);
+  assert.equal(voiceKind(voices[2]),"female");assert.equal(voiceKind(voices[1]),"male");
+  assert.equal(voiceKind({name:"Generic Chinese",lang:"zh-CN"} as SpeechSynthesisVoice),"unknown");
+  assert.equal(chineseVoices([...voices, voices[0]]).length,3);
+});
+test("Enhanced female voices are preferred and persisted choices fall back when unavailable", () => {
+  const basic={name:"Ting-Ting",voiceURI:"basic",lang:"zh-CN",localService:true} as SpeechSynthesisVoice;
+  const enhanced={...basic,name:"Ting-Ting (Enhanced)",voiceURI:"enhanced"};
+  assert.equal(chineseVoice([basic,enhanced]),enhanced);
+  assert.equal(chineseVoice([basic,enhanced],voiceId(basic)),basic);
+  assert.equal(chineseVoice([basic,enhanced],"missing"),enhanced);
+});
+test("Gentle speech uses chosen voice, native pitch and a slower configurable rate", () => {
+  const f=fakeSpeech(),v=new VoiceAnnouncer(f.platform);
+  try {
+    v.configure(voiceId(f.voices[1]),.85);v.announce(event(1));
+    assert.equal(f.spoken[0].voice,f.voices[1]);assert.equal(f.spoken[0].rate,.85);
+    assert.equal(f.spoken[0].pitch,1);assert.equal(f.spoken[0].volume,.8);
+    f.end();v.configure(voiceId(f.voices[1]),NaN);v.announce(event(2));assert.equal(f.spoken[1].rate,.92);
+    f.end();v.configure(voiceId(f.voices[1]),3);v.announce(event(3));assert.equal(f.spoken[2].rate,1.15);
+  } finally {v.stop();}
 });

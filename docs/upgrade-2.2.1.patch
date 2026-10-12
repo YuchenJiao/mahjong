@@ -1,0 +1,551 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# 一桌麻将 · 在线版 2.2
++# 一桌麻将 · 在线版 2.2.1
+ 
+ React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+@@ -25,6 +25,16 @@
+ 6. 结束后可复盘四家完整手牌；房主继续下一局，累计座位分数。
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
++
++## 2.2.1显示修复与女声音色
++
++- 中央只保留一个固定提示节点，最新牌也复用节点，连续出牌不再通过改变key反复重建。提示区固定88像素高并裁剪溢出，动作切换取消上一段动画，减少旧动画残留与纵向堆叠。
++- 页面及提示区标记为不翻译，避免浏览器翻译重写牌局的动态文字节点。
++- 自动选择优先考虑可用的中文女声及增强／自然音色，本地普通声音不再有最高优先级。默认语速从1.18调整为0.92，使用原生音高，不通过强行升调模拟女声。
++- 新增音色下拉框、舒缓／柔和／轻快三档语速、当前音色显示和试听；选择自动保存。声音列表更新后可发现新音色，保存的声音消失时自动回退。
++- 音色由浏览器和设备提供。网页不能凭空生成或安装高质量女声，不能保证每台iPhone都暴露同一款自然女声；本版未内置固定女声录音，也未添加付费语音API。
++
++已部署2.2请按[2.2.1升级步骤](docs/UPGRADE_2.2.1.md)更新。与2.2后端接口兼容，前后端分开部署时只更新前端即可；单服务部署更新整个仓库。
+ 
+ ## 本次界面、动画和语音更新
+ 
+diff --git a/docs/UPGRADE_2.2.1.md b/docs/UPGRADE_2.2.1.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.2.1.md
+@@ -0,0 +1,34 @@
++# 从2.2更新到2.2.1
++
++此版本针对截图中中央“出牌”提示向下堆叠，以及普通系统声音偏机械的问题。
++
++推荐合并完整源码包，保留自己的`.git`、`.env`、`.data`和部署设置。也可把本包`docs/upgrade-2.2.1.patch`放到原始2.2仓库根目录：
++
++```bash
++git apply --check docs/upgrade-2.2.1.patch
++git apply docs/upgrade-2.2.1.patch
++npm ci
++npm test
++npm run build
++git add .
++git commit -m "Keep Mahjong feedback stable and prefer gentle Chinese female voices"
++git push
++```
++
++不要同时覆盖新源码后再应用旧补丁。若检查报冲突，请按差异合并已有改动。
++
++Render前后端单服务重新部署整个仓库；前后端分离部署时，仅前端需要更新，已有2.2动作事件接口兼容。数据库、房间、重连凭据和本地存档无需迁移或清空。部署完成后刷新页面，点击“试听语音”；如果仍有旧画面，可完整刷新页面以加载最新构建。
++
++中央提示采用固定节点与固定边界，不再给每个动作创建带新key的提示容器。动画使用短暂效果，每次替换和隐藏都会取消，不保留已结束画面。禁用浏览器翻译对动态牌局节点的重写。
++
++“音色”默认自动优先女声，识别可用的自然／增强中文声音；“语速”默认柔和0.92，可改舒缓0.85或轻快1.05。选中的音色和速度自动保存，音色消失时回退，未知声音不会自动标记为女声。Web Speech API没有性别字段，本项目依据常见声音名称识别，是有限候选规则，并非完整声音目录。
++
++浏览器只会使用设备实际提供的声音。本版没有内置固定录音，不能保证每台设备都有高质量、温柔的中文女声；仅调语速和音高无法把低质量系统声音变成自然配音。为所有设备保证同一音色需要单独的配音资源或已配置的语音服务。没有新增付费接口或服务密钥依赖。
++
++浏览器端及iPhone实际试听、视觉复测尚未完成。本次提供完整代码及补丁，未修改你自行部署的GitHub、Render、Vercel或Pages账户。
++
++参考：
++
++- https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices
++- https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisVoice
++- https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,11 +1,11 @@
+-# 交付验证记录 · 2.2.0
++# 交付验证记录 · 2.2.1
+ 
+ 日期：2026-10-12。
+ 
+ | 检查 | 结果 |
+ |---|---|
+ | TypeScript前后端检查、Vite生产构建 | 通过 |
+-| 全部自动测试 | 49项通过，0失败 |
++| 全部自动测试 | 54项通过，0失败 |
+ | 国标算番回归 | 214个用例通过 |
+ | 本地完整对局 | 原32局均结束，收支零和 |
+ | 1–4人房间 | 川麻／国标各1、2、3、4个独立会话，共8局完成并续局 |
+@@ -20,9 +20,13 @@
+ | 个人助手接口 | 只读调用改变风格，不修改牌局、阶段、房间难度或倒计时 |
+ | 公开动作事件 | 成立后才产生；他家胡牌取消的碰和被抢杠取消的补杠均不产生事件 |
+ | 事件隐私及座位 | 暗杠事件不包含牌面，接收者视角正确旋转；旧存档首次动作自动初始化 |
++| 提示渲染结构 | 80组连续事件、消失与回放状态的服务端渲染检查：始终只有一个提示槽和一个最新牌容器；并非真实浏览器DOM复测 |
++| 动画清理 | 模拟动画接口验证无结束帧保留、显式取消和API不可用时降级；减少动态效果按系统设置执行 |
++| 中文音色 | 可用自然女声优先于普通本地声、增强女声优先于精简声；女声名称以候选规则识别，未知音色不标成女声 |
++| 音色偏好 | 手动选定音色、声音缺失回退、语速范围与原生音高通过模拟接口验证 |
+ | 语音控制器 | 模拟浏览器声音接口验证中文牌名、中文声音选择、多响顺序、短队列、静音清理、异常降级 |
+ | 播报去重 | 首次连接不读历史，重复与迟到轮询不重复读，房间切换、回放不补播 |
+-| 实际Node HTTP | 本版健康2.2.0、公开出牌事件、来客座位旋转、对手手牌隐藏、生产HTML通过；既有难度与助手行为另由完整回归覆盖 |
++| 实际Node HTTP | 本版健康2.2.1及生产HTML通过；公开出牌事件、来客座位旋转、对手手牌隐藏已在2.2真实HTTP验证并由本版完整回归覆盖；既有难度与助手行为另由完整回归覆盖 |
+ 
+ ## 边界
+ 
+@@ -31,3 +35,5 @@
+ 对手听牌与风险是公开信息上的启发式估计，不是统计校准概率；具体牌例改善不等于已证明总体胜率提升。
+ 
+ 原Site接口返回“项目不存在”，没有发布到旧网址。也没有登录或修改用户自己创建的GitHub、Render、Vercel、Pages账户。本次交付完整源码与从原2.0、2.1包升级的补丁，部署需由自己的仓库发布。
++
++本次依据用户截图修复中央重复提示，具体iOS触发机制尚未复现。新结构复用稳定节点，并固定提示槽高度和溢出边界；服务端渲染和模拟动画测试不能证明Safari图形合成问题已经实机消失。没有生成固定女声录音，声音自然程度仍取决于设备提供的实际音色。
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.2.0",
++  "version": "2.2.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.2.0",
++      "version": "2.2.1",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.2.0",
++  "version": "2.2.1",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -40,7 +40,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.2.0",
++      version: "2.2.1",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+diff --git a/src/feedback/CenterFeedback.tsx b/src/feedback/CenterFeedback.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/feedback/CenterFeedback.tsx
+@@ -0,0 +1,50 @@
++import { useEffect, useRef } from "react";
++import type { TableEvent } from "../engine/types";
++import { tileName } from "../engine/core";
++import { Tile } from "../Tile";
++import { eventLabel } from "./events";
++
++// Cancel transient effects before the next event. Animation never creates or
++// removes nodes and never retains a finished frame in the compositor.
++export function transientAnimation(element: HTMLElement | null, frames: Keyframe[], duration: number) {
++  if (!element?.animate || (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)) return () => {};
++  try {
++    const animation = element.animate(frames, { duration, easing: "ease-out", fill: "none" });
++    return () => animation.cancel();
++  } catch { return () => {}; }
++}
++
++export function CenterFeedback({ mode, activity, actorName, tile, caption, eventKey, tileKey, replay = false }: {
++  mode: "sichuan" | "mcr";
++  activity: TableEvent | null;
++  actorName: string;
++  tile?: number;
++  caption: string;
++  eventKey: string;
++  tileKey: string;
++  replay?: boolean;
++}) {
++  const bubble = useRef<HTMLDivElement>(null), card = useRef<HTMLDivElement>(null);
++  useEffect(() => {
++    if (!activity || replay) return;
++    return transientAnimation(bubble.current, [{ opacity: .2, transform: "scale(.92)" }, { opacity: 1, transform: "scale(1)" }], 180);
++  }, [eventKey, !!activity, replay]);
++  useEffect(() => {
++    if (tile === undefined || replay) return;
++    return transientAnimation(card.current, [{ opacity: .3, transform: "scale(.92)" }, { opacity: 1, transform: "scale(1)" }], 220);
++  }, [tileKey, tile, replay]);
++  return <div className="center-marker notranslate" translate="no">
++    <span className="mode-seal">{mode === "sichuan" ? "川" : "国"}</span>
++    <div className="event-slot">
++      <div ref={bubble} className={`event-bubble ${activity ? "is-visible" : ""} ${activity?.kind === "win" ? "event-win" : ""}`} aria-hidden={!activity}>
++        <small>{activity ? actorName : ""}</small>
++        <strong>{activity ? eventLabel(activity) : ""}</strong>
++      </div>
++    </div>
++    <p>{caption}</p>
++    <div ref={card} className={`last-discard ${tile === undefined ? "is-empty" : ""}`} aria-hidden={tile === undefined}>
++      <Tile tile={tile} />
++      <b>{tile === undefined ? "" : tileName(tile)}</b>
++    </div>
++  </div>;
++}
+diff --git a/src/feedback/useTableFeedback.ts b/src/feedback/useTableFeedback.ts
+--- a/src/feedback/useTableFeedback.ts
++++ b/src/feedback/useTableFeedback.ts
+@@ -1,16 +1,31 @@
+ import { useEffect, useRef, useState } from "react";
+ import type { Game, TableEvent } from "../engine/types";
+ import { EventCursor } from "./events";
+-import { browserSpeech, VoiceAnnouncer } from "./voice";
++import { browserSpeech, chineseVoice, chineseVoices, VoiceAnnouncer } from "./voice";
+ 
+ export function useTableFeedback(game: Game | null, stream: string, replay: boolean,
+-  voiceEnabled: boolean, soundEnabled: boolean, sound: (kind: string, enabled: boolean) => void) {
++  voiceEnabled: boolean, soundEnabled: boolean, sound: (kind: string, enabled: boolean) => void,
++  voiceChoice = "auto", voiceRate = .92) {
+   const cursor = useRef(new EventCursor());
+   const unlocked = useRef(false);
+   const [voiceError, setVoiceError] = useState("");
+   const speaker = useRef<VoiceAnnouncer | null>(null);
+   if (!speaker.current) speaker.current = new VoiceAnnouncer(browserSpeech(), () => setVoiceError("语音未能播放，请点试听或检查系统中文声音"));
+   const [activity, setActivity] = useState<TableEvent | null>(null);
++  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
++  const [voicesLoaded, setVoicesLoaded] = useState(false);
++  useEffect(() => {
++    const platform = browserSpeech();
++    if (!platform) return;
++    const refresh = () => {
++      try { setVoices(chineseVoices(platform.synth.getVoices())); } catch { setVoices([]); }
++    };
++    refresh();
++    window.speechSynthesis.addEventListener("voiceschanged", refresh);
++    const timer = setTimeout(() => { refresh(); setVoicesLoaded(true); }, 1200);
++    return () => { clearTimeout(timer); window.speechSynthesis.removeEventListener("voiceschanged", refresh); };
++  }, []);
++  useEffect(() => { speaker.current!.configure(voiceChoice, voiceRate); setVoiceError(""); }, [voiceChoice, voiceRate]);
+   useEffect(() => {
+     const fresh = cursor.current.read(stream, game?.events ?? [], replay);
+     if (!fresh.length) return;
+@@ -36,6 +51,7 @@
+     return () => { document.removeEventListener("visibilitychange", hide); speaker.current!.stop(); };
+   }, []);
+   return { activity: replay ? null : activity, voiceError, supported: speaker.current.supported,
++    voices, voicesLoaded, selectedVoice: chineseVoice(voices, voiceChoice),
+     unlock: () => { unlocked.current = true; },
+     preview: () => { unlocked.current = true; setVoiceError(""); speaker.current!.preview(); } };
+ }
+diff --git a/src/feedback/voice.ts b/src/feedback/voice.ts
+--- a/src/feedback/voice.ts
++++ b/src/feedback/voice.ts
+@@ -9,9 +9,35 @@
+   if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return null;
+   return { synth: window.speechSynthesis, utterance: text => new SpeechSynthesisUtterance(text) };
+ }
+-export function chineseVoice(voices: readonly SpeechSynthesisVoice[]) {
+-  return [...voices].filter(v => /^zh(?:[-_]|$)/i.test(v.lang))
+-    .sort((a, b) => Number(b.localService) - Number(a.localService) || Number(/^zh[-_]CN$/i.test(b.lang)) - Number(/^zh[-_]CN$/i.test(a.lang)))[0];
++export const voiceId = (voice: SpeechSynthesisVoice) => JSON.stringify([voice.voiceURI ?? "", voice.name ?? "", voice.lang]);
++const femaleNames = /xiaoxiao|xiaohan|xiaomo|xiaoyi|xiaoshuang|xiaomeng|晓晓|晓涵|晓墨|晓伊|晓双|晓梦|ting[ -]?ting|婷婷|mei[ -]?jia|美佳|sin[ -]?ji|善怡/i;
++const maleNames = /yunxi|yunyang|yunjian|yunxia|yunfeng|yunhao|云希|云扬|云健|云夏|云枫|云皓|kangkang|康康|liangliang|亮亮|zhiwei|智伟/i;
++export function voiceKind(v: SpeechSynthesisVoice): "female" | "male" | "unknown" {
++  const name = `${v.name ?? ""} ${v.voiceURI ?? ""}`;
++  if (femaleNames.test(name)) return "female";
++  if (maleNames.test(name)) return "male";
++  return "unknown"; // The Web Speech API does not provide a gender property.
++}
++function voiceRank(v: SpeechSynthesisVoice) {
++  const name = `${v.name ?? ""} ${v.voiceURI ?? ""}`, kind = voiceKind(v);
++  let score = kind === "female" ? 1000 : kind === "male" ? -1000 : 0;
++  if (/^zh[-_]CN$/i.test(v.lang)) score += 100;
++  else if (/^zh[-_]TW$/i.test(v.lang)) score += 80;
++  if (/neural|natural|premium|enhanced|增强|高质量|优质/i.test(name)) score += 250;
++  if (/compact|精简/i.test(name)) score -= 100;
++  if (/xiaoxiao|晓晓/i.test(name)) score += 150;
++  else if (/xiaohan|晓涵|xiaomo|晓墨/i.test(name)) score += 120;
++  if (/google/i.test(name)) score += 25;
++  if (v.localService) score += 5;
++  return score;
++}
++export function chineseVoices(voices: readonly SpeechSynthesisVoice[]) {
++  const unique = new Map(voices.filter(v => /^zh(?:[-_]|$)/i.test(v.lang)).map(v => [voiceId(v), v]));
++  return [...unique.values()].sort((a, b) => voiceRank(b) - voiceRank(a) || voiceId(a).localeCompare(voiceId(b)));
++}
++export function chineseVoice(voices: readonly SpeechSynthesisVoice[], choice = "auto") {
++  const available = chineseVoices(voices);
++  return available.find(v => voiceId(v) === choice) ?? available[0];
+ }
+ 
+ // Use our own short queue so fast CPUs cannot create minutes of stale speech.
+@@ -21,8 +47,15 @@
+   private active = false;
+   private generation = 0;
+   private timer: ReturnType<typeof setTimeout> | undefined;
++  private choice = "auto";
++  private rate = .92;
+   constructor(private platform: SpeechPlatform | null, private onError: () => void = () => {}) {}
+   get supported() { return !!this.platform; }
++  configure(choice: string, rate: number) {
++    if (this.choice !== choice) this.stop();
++    this.choice = choice;
++    this.rate = Number.isFinite(rate) ? Math.min(1.15, Math.max(.8, rate)) : .92;
++  }
+   announce(event: TableEvent) {
+     const text = eventSpeech(event);
+     if (text) this.enqueue(text, event.kind);
+@@ -44,9 +77,9 @@
+     this.active = true;
+     try {
+       const { synth, utterance } = this.platform, u = utterance(item.text);
+-      u.lang = "zh-CN"; u.rate = 1.18; u.volume = 0.85;
+-      const voice = chineseVoice(synth.getVoices());
+-      if (voice) u.voice = voice;
++      u.lang = "zh-CN"; u.rate = this.rate; u.pitch = 1; u.volume = .8;
++      const voice = chineseVoice(synth.getVoices(), this.choice);
++      if (voice) { u.voice = voice; u.lang = voice.lang; }
+       const finish = () => {
+         if (this.generation !== ticket) return;
+         ++this.generation;
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -29,6 +29,8 @@
+ import { Tile } from "./Tile";
+ import { useTableFeedback } from "./feedback/useTableFeedback";
+ import { eventLabel } from "./feedback/events";
++import { CenterFeedback } from "./feedback/CenterFeedback";
++import { voiceId, voiceKind } from "./feedback/voice";
+ import "./style.css";
+ import { useRoom } from "./online/useRoom";
+ import { RoomPanel } from "./online/RoomPanel";
+@@ -431,8 +433,8 @@
+     [setup, setSetup] = useState(!validInitial && !online.session && !new URL(location.href).searchParams.has("room"));
+   const [selected, setSelected] = useState<number[]>([]),
+     [prefs, setPrefs] = useState(
+-      { hints: true, sound: true, voice: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
+-        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
++      { hints: true, sound: true, voice: true, voiceChoice: "auto", voiceRate: .92, speed: 650, assistantStyle: "balanced" as PlayStyle,
++        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; voiceChoice: string; voiceRate: number; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
+     );
+   const [paused, setPaused] = useState(false),
+     [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
+@@ -442,7 +444,7 @@
+     [notice, setNotice] = useState(""),
+     [saveWarning, setSaveWarning] = useState("");
+   const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
+-  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound);
++  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound, prefs.voiceChoice, prefs.voiceRate);
+   const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
+   useEffect(() => {
+     initCore()
+@@ -701,7 +703,7 @@
+   if (online.pending) status = `正在提交${online.pending.type === "claim" || online.pending.type === "act" ? actionName(online.pending.action.type) : "操作"}…`;
+   else if (online.room?.game?.pending?.responses[0] && online.room.game.pending.actions[0].length) status = `已选择${actionName(online.room.game.pending.responses[0].type)}，等待其他玩家`;
+   return (
+-    <div className={`app ${replay ? "is-replay" : ""}`} onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
++    <div className={`app ${replay ? "is-replay" : ""}`} translate="no" onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
+       <header className="topbar">
+         <div className="brand">
+           <span className="brand-mark">一</span>
+@@ -786,6 +788,20 @@
+                 onChange={e => setPrefs({ ...prefs, voice: e.target.checked })} />
+               语音
+             </label>
++            <label>音色
++              <select className="voice-select" aria-label="播报音色" disabled={!feedback.supported || !prefs.voice} value={prefs.voiceChoice}
++                onChange={e => setPrefs({ ...prefs, voiceChoice: e.target.value })}>
++                <option value="auto">自动 · 优先柔和女声</option>
++                {feedback.voices.map(v => <option key={voiceId(v)} value={voiceId(v)}>{v.name}{voiceKind(v) === "female" ? " · 女声" : ""}</option>)}
++                {prefs.voiceChoice !== "auto" && !feedback.voices.some(v => voiceId(v) === prefs.voiceChoice) && <option value={prefs.voiceChoice}>原音色不可用 · 自动选择</option>}
++              </select>
++            </label>
++            <label>语速
++              <select aria-label="播报语速" disabled={!prefs.voice || !feedback.supported} value={prefs.voiceRate}
++                onChange={e => setPrefs({ ...prefs, voiceRate: Number(e.target.value) })}>
++                <option value={.85}>舒缓</option><option value={.92}>柔和</option><option value={1.05}>轻快</option>
++              </select>
++            </label>
+             <button className="voice-preview" disabled={!feedback.supported || !prefs.voice} onClick={feedback.preview}>试听语音</button>
+             <button
+               onClick={() => setPaused(!paused)}
+@@ -806,6 +822,9 @@
+           </div>
+         </div>
+         {(feedback.voiceError || !feedback.supported) && <p className="voice-note" role="status">{feedback.voiceError || "此浏览器不支持语音播报；可继续正常打牌。"}</p>}
++        {prefs.voice && feedback.supported && feedback.voicesLoaded && <p className="voice-current">
++          {feedback.selectedVoice ? `当前音色：${feedback.selectedVoice.name}${voiceKind(feedback.selectedVoice) === "female" ? " · 女声" : " · 可换音色试听"}` : "未检测到可选中文音色，将尝试系统默认中文声音"}
++        </p>}
+         <div className="layout">
+           <div className="table-column">
+             <div className="table">
+@@ -871,17 +890,13 @@
+                         </div>
+                       </div>
+                     ))}
+-                    <div className="center-marker">
+-                      <span className="mode-seal">{game.config.mode === "sichuan" ? "川" : "国"}</span>
+-                      {feedback.activity && <div className={`event-bubble event-${feedback.activity.kind}`} key={`${feedbackStream}:${feedback.activity.id}`}>
+-                        <small>{display.players[feedback.activity.actor].name}</small><strong>{eventLabel(feedback.activity)}</strong>
+-                      </div>}
+-                      <p>{display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}</p>
+-                      {(display.lastTile ?? latestDiscard?.tile) !== undefined && <div className="last-discard" key={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}>
+-                        <Tile tile={display.lastTile ?? latestDiscard?.tile} />
+-                        <b>{tileName((display.lastTile ?? latestDiscard?.tile)!)}</b>
+-                      </div>}
+-                    </div>
++                    <CenterFeedback mode={game.config.mode} activity={feedback.activity}
++                      actorName={feedback.activity ? display.players[feedback.activity.actor].name : ""}
++                      tile={display.lastTile ?? latestDiscard?.tile}
++                      caption={display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}
++                      eventKey={`${feedbackStream}:${feedback.activity?.id ?? 0}`}
++                      tileKey={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}
++                      replay={!!replay} />
+                   </div>
+                   <div className={`human-zone ${feedback.activity?.actor === 0 ? "action-flash" : ""}`}>
+                     <div className="human-info">
+diff --git a/src/style.css b/src/style.css
+--- a/src/style.css
++++ b/src/style.css
+@@ -1550,6 +1550,8 @@
+ .game-controls select, .game-controls button { min-height: 40px; padding: 8px 12px; font-size: inherit; }
+ .game-controls input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
+ .voice-preview { color: var(--green); }
++.game-controls .voice-select { max-width: 230px; }
++.voice-current { margin: -4px 0 16px; color: #52684d; font-size: 13px; }
+ .voice-note { color: #87651d; font-size: 14px; margin: -4px 0 16px; }
+ .layout { grid-template-columns: minmax(0, 1fr) 310px; }
+ .table {
+@@ -1604,12 +1606,15 @@
+ .river-tiles { gap: 4px; }
+ .river { --small-w: 32px; --small-h: 45px; }
+ .river .tile.selected { background: #fff0b9; box-shadow: 0 0 0 2px #c89533; }
+-.center-marker { width: 96px; min-width: 0; color: #496841; }
++.center-marker { width: 96px; min-width: 0; color: #496841; position: relative; isolation: isolate; }
+ .center-marker > .mode-seal { font: 22px serif; opacity: .65; }
+ .center-marker > p { font-size: 12px; margin: 10px 0; }
+ .center-marker .tile { --face-w: 64px; --face-h: 90px; width: var(--face-w); height: var(--face-h); box-shadow: 0 5px 15px #30462920; }
+ .last-discard > b { display: block; font-size: 16px; margin-top: 8px; color: #274c39; }
+-.event-bubble { padding: 10px 6px; margin: 10px 0; border-radius: 14px; background: #224f40; color: #fffdf4; box-shadow: 0 4px 12px #214f4220; }
++.event-slot { position: relative; height: 88px; margin: 10px 0; overflow: hidden; contain: layout paint; }
++.event-bubble { position: absolute; inset: 0; padding: 10px 6px; margin: 0; border-radius: 14px; background: #224f40; color: #fffdf4; visibility: hidden; overflow: hidden; }
++.event-bubble.is-visible { visibility: visible; }
++.last-discard.is-empty { visibility: hidden; }
+ .event-bubble small { display: block; font-size: 11px; overflow-wrap: anywhere; }
+ .event-bubble strong { display: block; font-size: 26px; line-height: 1.2; margin-top: 4px; }
+ .event-win { background: #8b5c21; }
+@@ -1642,16 +1647,13 @@
+ .room-entry input, .room-entry button, .room-actions button { min-height: 44px; }
+ /* Animation changes presentation only; claim buttons retain stable DOM keys. */
+ .tile.entering { animation: river-drop .35s cubic-bezier(.2,.8,.3,1) both; }
+-.last-discard { animation: latest-card .32s ease-out; }
++.last-discard { min-height: 122px; }
+ .human-hand .tile.drawn:not(.selected) { animation: draw-card .35s ease-out; }
+ .meld { animation: meld-reveal .32s ease-out; }
+-.event-bubble { animation: announce .35s cubic-bezier(.2,.8,.3,1); }
+ .action-flash { animation: action-glow .7s ease-out; }
+ @keyframes river-drop { from { opacity: 0; transform: translateY(-16px) scale(1.15); } to { opacity: 1; transform: translateY(0) scale(1); } }
+-@keyframes latest-card { from { opacity: .2; transform: scale(.82) rotate(-5deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+ @keyframes draw-card { from { opacity: .25; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+ @keyframes meld-reveal { from { opacity: .3; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+-@keyframes announce { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+ @keyframes action-glow { 30% { box-shadow: inset 0 0 0 2px #c89a45, 0 0 18px #c89a4533; } }
+ @media (min-width: 1450px) { :root { --tile-w: 64px; --tile-h: 90px; } }
+ @media (max-width: 1340px) {
+diff --git a/tests/display-feedback.test.ts b/tests/display-feedback.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/display-feedback.test.ts
+@@ -0,0 +1,27 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { createElement } from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++import { CenterFeedback, transientAnimation } from "../src/feedback/CenterFeedback";
++import type { TableEvent } from "../src/engine/types";
++
++test("Center renders one bounded event slot and one card for rapid updates, expiry and replay", () => {
++  for(let i=0;i<80;i++) {
++    const activity:TableEvent|null=i%5===0?null:{id:i,actor:i%4,kind:i%7===0?"win":"discard",tile:i%34};
++    const markup=renderToStaticMarkup(createElement(CenterFeedback,{mode:"mcr",activity,actorName:"月白",tile:i%3===0?undefined:i%34,caption:"当前出牌",eventKey:String(i),tileKey:String(i),replay:i>70}));
++    assert.equal((markup.match(/class="event-slot"/g)??[]).length,1);
++    assert.equal((markup.match(/class="event-bubble /g)??[]).length,1);
++    assert.equal((markup.match(/class="last-discard /g)??[]).length,1);
++    assert.ok(markup.includes('translate="no"'));
++    if(!activity)assert.ok(markup.includes('event-bubble  " aria-hidden="true"'));
++  }
++});
++test("Transient animation retains no finished frames and explicitly cancels on replacement", () => {
++  let cancelled=0;let options:KeyframeAnimationOptions|undefined;
++  const el={animate(_frames:Keyframe[],o:KeyframeAnimationOptions){options=o;return {cancel(){cancelled++;}};}} as unknown as HTMLElement;
++  const cleanup=transientAnimation(el,[{opacity:0},{opacity:1}],180);
++  assert.equal(options?.fill,"none");assert.equal(options?.duration,180);
++  cleanup();assert.equal(cancelled,1);
++  assert.doesNotThrow(()=>transientAnimation(null,[],180)());
++  assert.doesNotThrow(()=>transientAnimation({animate(){throw Error("unsupported");}} as unknown as HTMLElement,[],180)());
++});
+diff --git a/tests/feedback.test.ts b/tests/feedback.test.ts
+--- a/tests/feedback.test.ts
++++ b/tests/feedback.test.ts
+@@ -1,7 +1,7 @@
+ import test from "node:test";
+ import assert from "node:assert/strict";
+ import { EventCursor, eventSpeech } from "../src/feedback/events";
+-import { chineseVoice, VoiceAnnouncer } from "../src/feedback/voice";
++import { chineseVoice, chineseVoices, voiceId, voiceKind, VoiceAnnouncer } from "../src/feedback/voice";
+ import type { SpeechPlatform } from "../src/feedback/voice";
+ import type { TableEvent } from "../src/engine/types";
+ 
+@@ -10,9 +10,9 @@
+   const spoken: SpeechSynthesisUtterance[] = [];
+   let cancelled = 0;
+   const voices = [
+-    { lang: "en-US", localService: true },
+-    { lang: "zh-CN", localService: false },
+-    { lang: "zh-CN", localService: true },
++    { name: "English", voiceURI: "en", lang: "en-US", localService: true },
++    { name: "Chinese remote", voiceURI: "remote", lang: "zh-CN", localService: false },
++    { name: "Chinese local", voiceURI: "local", lang: "zh-CN", localService: true },
+   ] as SpeechSynthesisVoice[];
+   const platform: SpeechPlatform = {
+     synth: { speak: u => { if (throws) throw Error("unavailable"); spoken.push(u); }, cancel: () => { cancelled++; }, resume() {}, getVoices: () => voices },
+@@ -79,3 +79,32 @@
+   w.announce(event(1));w.announce(event(2));working.spoken[0].onerror?.call(working.spoken[0],{} as SpeechSynthesisErrorEvent);
+   assert.equal(working.spoken.length,1);assert.equal(errors,2);w.stop();
+ });
++test("Available natural female voices outrank compact local voices and male neural voices", () => {
++  const voices = [
++    { name: "Ting-Ting (Compact)", voiceURI: "tt", lang: "zh-CN", localService: true },
++    { name: "Microsoft Yunxi Online (Natural)", voiceURI: "yx", lang: "zh-CN", localService: false },
++    { name: "Microsoft Xiaoxiao Online (Natural)", voiceURI: "xx", lang: "zh-CN", localService: false },
++    { name: "English female", voiceURI: "en", lang: "en-US", localService: true },
++  ] as SpeechSynthesisVoice[];
++  assert.equal(chineseVoice(voices), voices[2]);
++  assert.equal(voiceKind(voices[2]),"female");assert.equal(voiceKind(voices[1]),"male");
++  assert.equal(voiceKind({name:"Generic Chinese",lang:"zh-CN"} as SpeechSynthesisVoice),"unknown");
++  assert.equal(chineseVoices([...voices, voices[0]]).length,3);
++});
++test("Enhanced female voices are preferred and persisted choices fall back when unavailable", () => {
++  const basic={name:"Ting-Ting",voiceURI:"basic",lang:"zh-CN",localService:true} as SpeechSynthesisVoice;
++  const enhanced={...basic,name:"Ting-Ting (Enhanced)",voiceURI:"enhanced"};
++  assert.equal(chineseVoice([basic,enhanced]),enhanced);
++  assert.equal(chineseVoice([basic,enhanced],voiceId(basic)),basic);
++  assert.equal(chineseVoice([basic,enhanced],"missing"),enhanced);
++});
++test("Gentle speech uses chosen voice, native pitch and a slower configurable rate", () => {
++  const f=fakeSpeech(),v=new VoiceAnnouncer(f.platform);
++  try {
++    v.configure(voiceId(f.voices[1]),.85);v.announce(event(1));
++    assert.equal(f.spoken[0].voice,f.voices[1]);assert.equal(f.spoken[0].rate,.85);
++    assert.equal(f.spoken[0].pitch,1);assert.equal(f.spoken[0].volume,.8);
++    f.end();v.configure(voiceId(f.voices[1]),NaN);v.announce(event(2));assert.equal(f.spoken[1].rate,.92);
++    f.end();v.configure(voiceId(f.voices[1]),3);v.announce(event(3));assert.equal(f.spoken[2].rate,1.15);
++  } finally {v.stop();}
++});

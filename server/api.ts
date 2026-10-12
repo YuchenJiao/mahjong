@@ -40,7 +40,7 @@ export async function handleApi(request: Request, capabilities: { onlineRooms?: 
     return json({
       status: "ok",
       service: "quiet-mahjong",
-      version: "2.2.0",
+      version: "2.2.1",
       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
       persistentServerState: !!capabilities.onlineRooms,
       onlineRooms: !!capabilities.onlineRooms,
