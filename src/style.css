@@ -1550,6 +1550,8 @@ input {
 .game-controls select, .game-controls button { min-height: 40px; padding: 8px 12px; font-size: inherit; }
 .game-controls input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
 .voice-preview { color: var(--green); }
+.game-controls .voice-select { max-width: 230px; }
+.voice-current { margin: -4px 0 16px; color: #52684d; font-size: 13px; }
 .voice-note { color: #87651d; font-size: 14px; margin: -4px 0 16px; }
 .layout { grid-template-columns: minmax(0, 1fr) 310px; }
 .table {
@@ -1604,12 +1606,15 @@ input {
 .river-tiles { gap: 4px; }
 .river { --small-w: 32px; --small-h: 45px; }
 .river .tile.selected { background: #fff0b9; box-shadow: 0 0 0 2px #c89533; }
-.center-marker { width: 96px; min-width: 0; color: #496841; }
+.center-marker { width: 96px; min-width: 0; color: #496841; position: relative; isolation: isolate; }
 .center-marker > .mode-seal { font: 22px serif; opacity: .65; }
 .center-marker > p { font-size: 12px; margin: 10px 0; }
 .center-marker .tile { --face-w: 64px; --face-h: 90px; width: var(--face-w); height: var(--face-h); box-shadow: 0 5px 15px #30462920; }
 .last-discard > b { display: block; font-size: 16px; margin-top: 8px; color: #274c39; }
-.event-bubble { padding: 10px 6px; margin: 10px 0; border-radius: 14px; background: #224f40; color: #fffdf4; box-shadow: 0 4px 12px #214f4220; }
+.event-slot { position: relative; height: 88px; margin: 10px 0; overflow: hidden; contain: layout paint; }
+.event-bubble { position: absolute; inset: 0; padding: 10px 6px; margin: 0; border-radius: 14px; background: #224f40; color: #fffdf4; visibility: hidden; overflow: hidden; }
+.event-bubble.is-visible { visibility: visible; }
+.last-discard.is-empty { visibility: hidden; }
 .event-bubble small { display: block; font-size: 11px; overflow-wrap: anywhere; }
 .event-bubble strong { display: block; font-size: 26px; line-height: 1.2; margin-top: 4px; }
 .event-win { background: #8b5c21; }
@@ -1642,16 +1647,13 @@ input {
 .room-entry input, .room-entry button, .room-actions button { min-height: 44px; }
 /* Animation changes presentation only; claim buttons retain stable DOM keys. */
 .tile.entering { animation: river-drop .35s cubic-bezier(.2,.8,.3,1) both; }
-.last-discard { animation: latest-card .32s ease-out; }
+.last-discard { min-height: 122px; }
 .human-hand .tile.drawn:not(.selected) { animation: draw-card .35s ease-out; }
 .meld { animation: meld-reveal .32s ease-out; }
-.event-bubble { animation: announce .35s cubic-bezier(.2,.8,.3,1); }
 .action-flash { animation: action-glow .7s ease-out; }
 @keyframes river-drop { from { opacity: 0; transform: translateY(-16px) scale(1.15); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes latest-card { from { opacity: .2; transform: scale(.82) rotate(-5deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes draw-card { from { opacity: .25; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes meld-reveal { from { opacity: .3; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes announce { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
 @keyframes action-glow { 30% { box-shadow: inset 0 0 0 2px #c89a45, 0 0 18px #c89a4533; } }
 @media (min-width: 1450px) { :root { --tile-w: 64px; --tile-h: 90px; } }
 @media (max-width: 1340px) {
