@@ -1,0 +1,1405 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+-# 一桌麻将 · 在线版 2.0
++# 一桌麻将 · 在线版 2.1
+ 
+-React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由进阶电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
++React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+ ## 启动
+ 
+@@ -21,10 +21,20 @@
+ 2. 房主复制邀请链接，其他玩家打开链接后填写昵称、加入房间。也可输入8位房间号。
+ 3. 房主点击“开始牌局”；1–4位真人均可开局，空位由电脑补齐。
+ 4. 四家分别提交同花色换三张、定缺选择。出牌、吃碰杠胡由服务端验证和结算。
+-5. 断线15秒或操作超时进入电脑托管；原浏览器刷新后重连，点“收回操作”接管。换牌／定缺60秒，行牌45秒。
++5. 断线30秒或操作超时进入电脑托管；原浏览器刷新后重连，点“收回操作”接管。换牌／定缺60秒，行牌45秒。
+ 6. 结束后可复盘四家完整手牌；房主继续下一局，累计座位分数。
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
++
++## 本次算法与操作更新
++
++- 电脑可选基础、标准、进阶；房主可在牌局中调整，之后的电脑／托管决策生效。
++- 助手可实时切换偏进攻、攻守平衡、偏防守；联网助手由后端按当前玩家的公开信息视图计算，风格只影响自己的建议。
++- 统计所有公开弃牌、副露、已胡和牌；历史弃牌单独记录，避免被吃碰的牌重复计数。结合副露、弃牌顺序、定缺和剩余牌估计对手风险。
++- 默认优先减少向听和保留活张；进阶档增加有限的后续进张搜索。死听不再仅因结构0向听而占优。
++- 抢牌按钮保持原位直到请求确认，显示提交状态与实际选择；旧轮询不会覆盖新操作，失败提示保留。合法动作采用语义匹配，JSON字段顺序不影响吃碰杠胡。
++
++更新已有仓库见[2.1升级步骤](docs/UPGRADE_2.1.md)，算法边界见[AI与助手说明](docs/AI_AND_ASSISTANT.md)。
+ 
+ ## 规则与界面
+ 
+@@ -44,7 +54,7 @@
+ 
+ ## 数据与范围
+ 
+-后端使用Node内置SQLite，默认`.data/rooms.sqlite`。持续访问延长房间有效期，无人访问2小时后房间过期。SQLite文件在本地或持久磁盘上可跨进程重启保留；Render免费实例的磁盘是临时的，重启、重新部署或休眠可能丢失房间。当前已部署的托管版使用D1保存房间，和自部署Node版采用相同规则引擎及房间协议。
++后端使用Node内置SQLite，默认`.data/rooms.sqlite`。持续访问延长房间有效期，无人访问2小时后房间过期。SQLite文件在本地或持久磁盘上可跨进程重启保留；Render免费实例的磁盘是临时的，重启、重新部署或休眠可能丢失房间。原托管版曾使用D1保存房间；本次原Site接口返回项目不存在，2.1更新交付为Node完整源码，需推送自己的仓库并重新部署。
+ 
+ 这是一套邀请房间型麻将项目，没有账号体系、公开匹配、聊天或排位。单人本地模式不依赖联机服务。
+ 
+diff --git a/docs/AI_AND_ASSISTANT.md b/docs/AI_AND_ASSISTANT.md
+new file mode 100644
+--- /dev/null
++++ b/docs/AI_AND_ASSISTANT.md
+@@ -0,0 +1,32 @@
++# 电脑与打牌助手 · 2.1
++
++算法是确定性的麻将程序，不使用LLM、远程AI模型或付费推理接口。联网模式的电脑决策和助手建议在Node后端执行；本地单人模式复用同一份TypeScript／Wasm规则与决策代码。
++
++## 可用信息
++
++自己的手牌与副露；四家的当前牌河、公开副露和暗杠数量；历史弃牌顺序；定缺；剩余牌数；已胡时公开的那一张和牌。对手未公开手牌、牌墙顺序与服务端随机种子均不进入PublicView。
++
++物理张数只计算当前牌河、副露、自己的手牌与未重复的公开和牌。历史弃牌提供对手行为线索，不再次计为一张物理牌。例如被碰走的五筒存在于碰牌组，不能又按历史弃牌多加一次。一炮多响的同一和牌也只计一次。旧存档尽可能从公开出牌帧恢复历史。
++
++## 进攻与防守
++
++对每种合法弃牌计算结构向听、还剩多少有效进张，以及番型潜力。国标开启8分限制时，结构听牌进张还要通过常规自摸与可见绝张的合法算分检查；事件番并不能提前当作必然收益。有效进张为0的死听会降级处理。
++
++进阶档对最有希望的3个弃牌候选，再模拟最多3类有效摸牌，并比较下一次弃牌后的进张质量。这是有限搜索，不是穷尽整副牌墙，更不能读取真实牌墙。
++
++对手风险根据副露数量、手牌张数、局面进度、近期弃牌形态、可能的清一色／对对胡方向以及可见牌阻塞进行估计。为候选牌分析顺子、对倒与单吊的剩余组合，川麻缺门牌对相应玩家的胡牌风险为0。历史同牌弃牌只降低风险；国标和川麻都不采用立直麻将的振听逻辑，早先弃过的牌后来仍可能胡。
++
++| 控制项 | 行为 |
++|---|---|
++| 基础电脑 | 结构向听与真实剩余进张，遵守完整规则；不作防守扣分和额外后续搜索 |
++| 标准电脑 | 加入公开牌风险与番型潜力，较轻防守权重 |
++| 进阶电脑 | 完整公开信息推断与有限后续进张搜索 |
++| 偏进攻助手 | 优先降低有效向听，防守权重较小 |
++| 攻守平衡助手 | 通常不为小幅降风险增加向听；晚局手牌较差且有明显威胁才考虑退守 |
++| 偏防守助手 | 威胁较强时可牺牲成牌速度，选更低风险的牌 |
++
++电脑难度是房间设置，由房主修改；助手风格是个人偏好，随时调整且不改变房间或倒计时。助手始终使用进阶分析，即使房间电脑选基础档。
++
++## 能力边界
++
++风险和听牌倾向是启发式推断，没有经过统计校准，不能作为准确概率。有限搜索不能保证最优打法，也不能保证必胡或不点炮。回归牌例验证合理的具体行为与完整对局可结束，不等于已经证明胜率提升。
+diff --git a/docs/API.md b/docs/API.md
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -1,6 +1,6 @@
+ # 后端 API · 在线房间
+ 
+-在线模式由服务端管理完整牌局并保存房间，浏览器本地单人模式仍可独立运行。后端同时提供工具算分／建议API和静态网页服务，不调用大模型。Node使用SQLite，托管Worker版使用D1。
++在线模式由服务端管理完整牌局并保存房间，浏览器本地单人模式仍可独立运行。后端同时提供工具算分／建议API和静态网页服务，不调用大模型。Node使用SQLite，原托管Worker实现使用D1。
+ 
+ ## 启动
+ 
+@@ -82,6 +82,7 @@
+ command类型（见src/online/protocol.ts）：
+ 
+ - start／next：仅房主；分别在房间尚未开局／本局已结束时执行。
++- difficulty：difficulty为easy／normal／advanced，只有房主可调整；只影响之后的电脑决策。
+ - exchange：tiles为三张同花色手牌；每人一次，四家提交完毕才同时交换。
+ - void：suit为0万、1筒、2条；四家选择完毕后公开定缺并行牌。
+ - discard：tile为牌值；只允许当前座位、合法手牌与定缺约束。
+@@ -98,3 +99,16 @@
+ 主要错误：400输入／非法动作、401座位凭据无效、403权限或来源、404房间不存在／闲置过期、409座位满／旧阶段／托管／当前不能开局、413请求过大、429房间容量达到上限。房间请求正文最多16KiB，HTTP适配器最多64KiB。
+ 
+ 跨域分离部署需要后端ALLOWED_ORIGINS白名单；同域不需要。Vercel函数只运行前述无状态工具API，房间请求由VITE_ONLINE_API_URL指向Node后端。
++
++
++## 2.1：后端助手与难度
++
++config.aiDifficulty为easy／normal／advanced，默认advanced。/api/analyze另外接收style（attack／balanced／defense）以及可选difficulty，助手默认使用advanced决策。
++
++POST /api/rooms/:id/analyze需要座位Bearer凭据，正文为{stage, style}；返回{stage, style, analysis}。使用服务端该座位的PublicView，不信任客户端提交的其他手牌。此请求是只读的，不修改牌局、难度、操作记录或超时倒计时。前端仅在阶段与风格仍匹配时采用响应。
++
++Advice增加effectiveShanten、offenseScore、defensePenalty、futureQuality、riskFactors；risk是相对风险指标，不是经过校准的放炮概率。历史弃牌discards不同于物理牌河river；publicWinningTiles按实际和牌事件去重。一炮多响只有一张物理和牌，不应按胡牌人数重复扣除剩余张数。
++
++RoomView.game.pending.responses[0]现在保留自己的真实选择；其他座位的选择仍隐藏。客户端提交期间停止自己的轮询并忽略此前启动的轮询响应，按钮保留但禁用，失败消息不会被下一次GET抹掉。服务端对动作类型、牌值、吃牌组合、杠索引进行语义匹配，避免依赖JSON对象字段顺序。
++
++断线托管阈值改为30秒。行牌45秒、换牌／定缺60秒的原计时保留，服务端增加3秒网络缓冲；超过缓冲或已被托管推进的旧操作仍会拒绝，不保证晚到的按钮总能撤销电脑操作。胡优先与国标多人点胡顺序保持原规则，取消吃碰杠时记入牌局日志。
+diff --git a/docs/DEPLOYMENT.md b/docs/DEPLOYMENT.md
+--- a/docs/DEPLOYMENT.md
++++ b/docs/DEPLOYMENT.md
+@@ -1,4 +1,6 @@
+ # 自行创建仓库与部署
++
++已有2.0仓库升级请先看[2.1升级步骤](UPGRADE_2.1.md)。
+ 
+ ## 创建自己的Git仓库
+ 
+diff --git a/docs/UPGRADE_2.1.md b/docs/UPGRADE_2.1.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.1.md
+@@ -0,0 +1,24 @@
++# 更新已部署的2.0仓库
++
++推荐将下载包的quiet-mahjong目录内容合并进现有仓库，保留你的.git、.env、.data、ALLOWED_ORIGINS以及自行配置的部署变量。不要上传本地SQLite文件或重连凭据。
++
++如果希望只应用改动，可只从下载包取出docs/upgrade-2.1.patch，放到你的原仓库内，然后：
++
++```bash
++git apply --check docs/upgrade-2.1.patch
++git apply docs/upgrade-2.1.patch
++npm ci
++npm test
++npm run build
++git add .
++git commit -m "Improve Mahjong strategy and claim synchronization"
++git push
++```
++
++补丁基于此前交付的原始2.0多人大包。若你已改过相同代码且检查失败，请合并相应差异；不要用覆盖命令丢弃自己的改动。完整合并源码和应用补丁是两种替代方式，不应在已覆盖后的新代码上再次应用旧版本补丁。
++
++在Render重新部署连接的仓库；分离部署时前后端都应更新到2.1，以使新的房间助手接口和前端风格选择配套。原VITE_ONLINE_API_URL与ALLOWED_ORIGINS无需因本次接口更新而改变。
++
++SQLite表结构不变，JSON新增字段均提供兼容默认值；已存在的房间不需要SQL迁移。不要执行Reset、删库或清空.data。部署平台自己的临时磁盘限制仍适用。
++
++这次没有连接或修改你自行建立的GitHub／Render账户。原ChatGPT Site的接口返回“项目不存在”，故没有把2.1发布到旧网址，也没有另建站点替代你的部署。
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,31 +1,29 @@
+-# 交付验证记录
++# 交付验证记录 · 2.1.0
+ 
+-版本2.0.0；日期2026-10-12。
++日期：2026-10-12。
+ 
+ | 检查 | 结果 |
+ |---|---|
+-| 前端与后端TypeScript检查、Vite生产构建 | 通过 |
+-| 自动测试 | 29项通过，0失败 |
+-| 原国标算番回归 | 214个用例通过 |
+-| 原本地全自动对局 | 川麻／国标、番数开／关，共32局正常结束 |
+-| 完整在线对局 | 两种模式分别使用1、2、3、4个独立真人会话，共8局完成，并继续下一局 |
+-| 联机权限与并发 | 同时加入座位、房主限制、离开后转交房主、凭据验证通过 |
+-| 同步安全 | 自己手牌可见；对方手牌、暗杠、牌墙、随机种子、进行中完整牌谱均隐藏 |
+-| 重试与过期动作 | 同一requestId只执行一次；旧stage、非法牌值拒绝 |
+-| 托管重连 | 断线托管、操作超时、原凭据恢复、收回操作并更新倒计时通过 |
+-| 数据保留 | 实际SQLite存储关闭并重新打开后，原房间与座位凭据仍有效 |
+-| 跨域控制 | 非白名单拒绝；配置的origin与预检通过 |
+-| 真实Node HTTP | 首页、health、4人创建／加入、换三张、定缺、出牌、手牌隔离、无凭据拒绝通过 |
+-| 编译后的Worker | 使用实际Worker打包代码、预编译Wasm及D1兼容SQLite适配验证创建、开局、手牌隔离和网页资源 |
++| TypeScript前后端检查、Vite生产构建 | 通过 |
++| 全部自动测试 | 41项通过，0失败 |
++| 国标算番回归 | 214个用例通过 |
++| 本地完整对局 | 原32局均结束，收支零和 |
++| 1–4人房间 | 川麻／国标各1、2、3、4个独立会话，共8局完成并续局 |
++| 三档电脑 | 川麻／国标各基础、标准、进阶，共6局完成，收支零和 |
++| 公开信息统计 | 被碰走的弃牌不重复计数、公开和牌加入统计、一炮多响按一张物理牌处理 |
++| 合理进攻例 | 保留56双面听而舍弃3筒；全桌已出6筒参与排序；死听不优先于活听 |
++| 风格及风险 | 三种风格改变防守扣分，副露指向及定缺影响候选风险，算法不读取对方手牌 |
++| 吃碰杠胡按钮回归 | 四类选择均按实际请求确认、后续轮询不改成过、重复请求不再执行 |
++| JSON动作匹配 | 字段顺序改变仍正确接受合法动作 |
++| 优先级与超时 | 他家胡牌取消碰牌有明确记录；3秒缓冲内接受当前阶段点击，旧阶段拒绝 |
++| 前端响应顺序 | 提交前启动的旧轮询，不能覆盖提交后确认的数据，即使它晚到或带更高版本 |
++| 个人助手接口 | 只读调用改变风格，不修改牌局、阶段、房间难度或倒计时 |
++| 实际Node HTTP | 后端三种难度、个人进攻／防守建议、仅自己的合法牌值、健康与生产资源通过 |
+ 
+-现有川麻亮牌、国标可选8分起胡限制、进阶AI、番型开关与牌谱功能保留。联机只允许服务端修改牌局；浏览器本地CPU自动推进在联机时关闭。
++## 边界
+ 
+-当前联机同步采用每秒HTTP轮询，电脑与超时动作由房间请求推进。房间无人访问2小时后过期。没有新增注册、公开匹配、聊天或排位。
++浏览器点击和手机横屏视觉复测尚未完成；接口回归、前端更新顺序模块测试和生产构建不等于完整浏览器测试。
+ 
+-## 验证边界
++对手听牌与风险是公开信息上的启发式估计，不是统计校准概率；具体牌例改善不等于已证明总体胜率提升。
+ 
+-没有登录或实际发布到用户的Vercel、Render、GitHub账号，也未替用户创建外部Git仓库。三平台部署配置可自行使用，免费套餐约束以官方政策为准。Render免费服务的临时磁盘不能保证SQLite跨重启／休眠保存。
+-
+-浏览器点击与手机横屏视觉复测未完成；服务器测试、编译后的Worker调用和生产构建不等于浏览器操作测试。
+-
+-Node单实例SQLite版本适用于小规模邀请房间，不支持多个隔离实例共享房间。托管版使用D1进行跨实例条件更新；房间凭据留在浏览器，清除浏览器存储会失去重连凭据。
++原Site接口返回“项目不存在”，没有发布到旧网址。也没有登录或修改用户自己创建的GitHub、Render、Vercel、Pages账户。本次交付完整源码与从原2.0包升级的补丁，部署需由自己的仓库发布。
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.0.0",
++  "version": "2.1.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.0.0",
++      "version": "2.1.0",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.0.0",
++  "version": "2.1.0",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -1,7 +1,7 @@
+ import { initCore, fanReference } from "../src/engine/core";
+ import { advise } from "../src/engine/ai";
+ import { rules } from "../src/engine/rules";
+-import { InputError, scoreInput, viewInput } from "./validation";
++import { InputError, scoreInput, viewInput, object, styleInput, difficultyInput } from "./validation";
+ 
+ export const MAX_BODY_BYTES = 65536;
+ let ready: Promise<void> | undefined;
+@@ -40,7 +40,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.0.0",
++      version: "2.1.0",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+@@ -90,7 +90,7 @@
+     const view = viewInput(data);
+     await ensureCore();
+     return json({
+-      recommendations: advise(view),
++      recommendations: advise(view, { style: styleInput(object(data).style), difficulty: object(data).difficulty === undefined ? "advanced" : difficultyInput(object(data).difficulty) }),
+       informationPolicy: "own-hand-and-public-information-only",
+     });
+   } catch (error) {
+diff --git a/server/rooms.ts b/server/rooms.ts
+--- a/server/rooms.ts
++++ b/server/rooms.ts
+@@ -1,12 +1,12 @@
+ import { initCore, suit } from "../src/engine/core";
+ import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
+ import { newGame, exchangeAll, voidAll, chooseExchange, chooseVoid, publicView,
+-  ownActions, act, discard, respond, advance } from "../src/engine/game";
++  ownActions, act, discard, respond, advance, historicalDiscards } from "../src/engine/game";
+ import type { Game, Config, Frame, Meld } from "../src/engine/types";
+ import type { RoomCommand, RoomView } from "../src/online/protocol";
+-import { configInput, object, InputError } from "./validation";
++import { configInput, object, InputError, difficultyInput, styleInput } from "./validation";
+ 
+-export const TURN_MS = 45000, SETUP_MS = 60000, DISCONNECT_MS = 15000, ROOM_TTL = 2 * 3600000;
++export const TURN_MS = 45000, SETUP_MS = 60000, DISCONNECT_MS = 30000, NETWORK_GRACE_MS = 3000, ROOM_TTL = 2 * 3600000;
+ type Seat = { name: string; hash: string; seen: number; auto: boolean };
+ export type RoomRecord = {
+   id: string; version: number; host: number; config: Config; seats: (Seat | null)[];
+@@ -51,7 +51,7 @@
+ export function tickRoom(r: RoomRecord, now: number) {
+   clock(r, now);
+   r.seats.forEach((s, i) => {
+-    if (s && (now - s.seen > DISCONNECT_MS || (now >= r.deadline && waiting(r, i)))) s.auto = true;
++    if (s && (now - s.seen > DISCONNECT_MS || (now > r.deadline + NETWORK_GRACE_MS && waiting(r, i)))) s.auto = true;
+   });
+   const g = r.game;
+   if (!g || g.phase === "end" || now < r.botAt) return;
+@@ -82,6 +82,12 @@
+     rename(r); return;
+   }
+   const s = r.seats[seat]!;
++  if (c.type === "difficulty") {
++    if (r.host !== seat) throw new RoomError("只有房主可调整电脑难度", 403);
++    r.config.aiDifficulty = difficultyInput(c.difficulty);
++    if (r.game) r.game.config.aiDifficulty = r.config.aiDifficulty;
++    return;
++  }
+   if (c.type === "takeback" || c.type === "autoplay") {
+     s.auto = c.type === "autoplay";
+     if (c.type === "takeback" && waiting(r, seat)) r.deadline = now +
+@@ -129,14 +135,14 @@
+       drawnTile: g.current === self || reveal ? g.drawnTile : null,
+       players: order.map(i => {
+         const p = g.players[i], w = g.winners.find(w => w.player === i), winning = p.hand.lastIndexOf(w?.tile ?? -1);
+-        return { ...clone(p), hand: p.hand.map((t, k) => reveal || i === self || (p.won && k === winning) ? t : -1),
++        return { ...clone(p), discards: historicalDiscards(g, i), hand: p.hand.map((t, k) => reveal || i === self || (p.won && k === winning) ? t : -1),
+           melds: p.melds.map(m => ({ ...rotateMeld(m), tiles: !reveal && i !== self && m.concealed ? m.tiles.map(() => -1) : [...m.tiles] })) };
+       }),
+       winners: g.winners.map(w => ({ ...clone(w), player: at(w.player), from: at(w.from) })),
+       payments: g.payments.map(p => ({ ...p, from: at(p.from), to: at(p.to) })),
+       pending: g.pending ? { ...clone(g.pending), from: at(g.pending.from),
+         actions: order.map(i => i === self ? clone(g.pending!.actions[i]).map(a => ({ ...a, tiles: a.tiles ? [...a.tiles] : undefined })) : []),
+-        responses: order.map(i => g.pending!.responses[i] === null ? null : { type: "pass" }) } : null,
++        responses: order.map(i => i === self ? clone(g.pending!.responses[i]) : g.pending!.responses[i] === null ? null : { type: "pass" }) } : null,
+       frames: reveal ? g.frames.map(rotateFrame) : [],
+       previous: g.previous.map(fs => fs.map(rotateFrame)),
+     };
+@@ -152,7 +158,7 @@
+ export function createRoomsApi(store: RoomStore, now = () => Date.now()) {
+   return async (req: Request): Promise<Response> => {
+     try {
+-      const path = new URL(req.url).pathname, match = /^\/api\/rooms(?:\/([A-F0-9]{8})(?:\/(join|command))?)?\/?$/.exec(path);
++      const path = new URL(req.url).pathname, match = /^\/api\/rooms(?:\/([A-F0-9]{8})(?:\/(join|command|analyze))?)?\/?$/.exec(path);
+       if (!match) throw new RoomError("房间接口不存在", 404);
+       const [, id, route] = match;
+       const method = !id || route ? "POST" : "GET";
+@@ -185,6 +191,13 @@
+         if (!r || r.expires <= time) throw new RoomError("房间不存在或已过期", 404);
+         const expected = r.version;
+         let seat = r.seats.findIndex(s => s?.hash === tokenHash);
++        if (route === "analyze") {
++          if (seat < 0 || bearer.length !== 48) throw new RoomError("无法验证座位", 401);
++          const style = styleInput(data.style), g = r.game;
++          if (data.stage !== undefined && data.stage !== r.stage) throw new RoomError("建议对应的牌局已变化", 409);
++          return json({ stage: r.stage, style, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
++            ? advise(publicView(g, seat), { style, difficulty: "advanced" }) : [] });
++        }
+         if (route === "join") {
+           if (r.game && r.game.phase !== "end") throw new RoomError("请等本局结束后再加入", 409);
+           seat = r.seats.findIndex(s => s === null);
+@@ -202,10 +215,10 @@
+           const key = `${seat}:${data.requestId}`;
+           if (r.commands.includes(key)) return json({ room: roomView(r, seat, time) });
+           const c = object(data.command) as unknown as RoomCommand;
+-          const administrative = ["leave", "takeback", "autoplay", "start", "next"].includes(c.type);
++          const administrative = ["leave", "takeback", "autoplay", "start", "next", "difficulty"].includes(c.type);
+           if (!administrative && data.stage !== r.stage) throw new RoomError("牌局已变化，请重试当前操作", 409);
+           // Preserve the grace deadline on live commands; only the polling path executes bot moves.
+-          if (!administrative && waiting(r, seat) && time >= r.deadline) { r.seats[seat]!.auto = true; throw new RoomError("操作已超时，请收回操作", 409); }
++          if (!administrative && waiting(r, seat) && time > r.deadline + NETWORK_GRACE_MS) { r.seats[seat]!.auto = true; throw new RoomError("操作已超时，请收回操作", 409); }
+           command(r, seat, c, time);
+           r.commands.push(key); r.commands = r.commands.slice(-80);
+         } else tickRoom(r, time);
+diff --git a/server/validation.ts b/server/validation.ts
+--- a/server/validation.ts
++++ b/server/validation.ts
+@@ -4,6 +4,8 @@
+   Meld,
+   Player,
+   PublicView,
++  PlayStyle,
++  AiDifficulty,
+   WinContext,
+ } from "../src/engine/types";
+ import { counts } from "../src/engine/core";
+@@ -22,6 +24,16 @@
+ }
+ function boolean(x: unknown): boolean {
+   if (typeof x !== "boolean") throw new InputError("Expected boolean");
++  return x;
++}
++export function difficultyInput(x: unknown): AiDifficulty {
++  if (x === undefined) return "advanced";
++  if (x !== "easy" && x !== "normal" && x !== "advanced") throw new InputError("Invalid AI difficulty");
++  return x;
++}
++export function styleInput(x: unknown): PlayStyle {
++  if (x === undefined) return "balanced";
++  if (x !== "attack" && x !== "balanced" && x !== "defense") throw new InputError("Invalid play style");
+   return x;
+ }
+ export function configInput(x: unknown): Config {
+@@ -38,6 +50,7 @@
+     throw new InputError("Invalid selfDraw");
+   return {
+     mode: o.mode,
++    aiDifficulty: difficultyInput(o.aiDifficulty),
+     scoring: o.scoring === undefined ? true : boolean(o.scoring),
+     mcrEightPointMinimum:
+       o.mcrEightPointMinimum === undefined ? true : boolean(o.mcrEightPointMinimum),
+@@ -174,6 +187,7 @@
+     return {
+       melds: i === self ? melds : meldsInput(p.melds ?? [], config, true),
+       river: tiles(p.river ?? [], config, 136),
++      discards: tiles(p.discards ?? p.river ?? [], config, 136),
+       voidSuit: integer(p.voidSuit ?? -1, -1, 2),
+       won: p.won === undefined ? false : boolean(p.won),
+       handCount: integer(p.handCount ?? 13, 0, 18),
+@@ -183,6 +197,8 @@
+   return {
+     config,
+     self,
++    lastDiscard: o.lastDiscard === undefined ? undefined : { tile: integer(object(o.lastDiscard).tile, 0, config.mode === "mcr" ? 33 : 26), from: integer(object(o.lastDiscard).from, 0, 3) },
++    publicWinningTiles: tiles(o.publicWinningTiles ?? [], config, 4),
+     hand,
+     melds,
+     voidSuit: integer(o.voidSuit ?? -1, -1, 2),
+diff --git a/src/engine/ai.ts b/src/engine/ai.ts
+--- a/src/engine/ai.ts
++++ b/src/engine/ai.ts
+@@ -1,52 +1,77 @@
+-import { evaluate, counts, suit, rank } from "./core";
+-import type { PublicView, Tile, Action } from "./types";
++import { evaluate, counts, suit, rank, rawScore } from "./core";
++import type { PublicView, Tile, Action, AiDifficulty, PlayStyle, Meld } from "./types";
+ export type Advice = {
+-  tile: Tile;
+-  shanten: number;
+-  ukeire: number;
+-  useful: { tile: Tile; left: number }[];
+-  risk: number;
+-  utility: number;
+-  reason: string;
+-  target: string;
++  tile: Tile; shanten: number; effectiveShanten: number; ukeire: number;
++  useful: { tile: Tile; left: number }[]; risk: number; utility: number;
++  offenseScore: number; defensePenalty: number; futureQuality: number;
++  riskFactors: string[]; reason: string; target: string;
+ };
++export type OpponentThreat = { player: number; readiness: number; value: number; flushSuit: number; triplet: boolean };
++export type AdviceOptions = { difficulty?: AiDifficulty; style?: PlayStyle };
++const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
++const valid = (t: number) => Number.isInteger(t) && t >= 0 && t < 34;
+ export function knownCounts(v: PublicView) {
+-  return counts([
+-    ...v.hand,
+-    ...v.players.flatMap((p) => [
+-      ...p.river,
+-      ...p.melds.flatMap((m) => m.tiles),
+-    ]),
+-  ]);
+-}
+-function danger(v: PublicView, t: Tile) {
++  // Current rivers and melds represent physical tiles. Historical discards are evidence,
++  // not additional copies: a claimed discard is already in its caller's meld.
++  return counts([...v.hand, ...v.players.flatMap(p => [...p.river, ...p.melds.flatMap(m => m.tiles)]),
++    ...(v.publicWinningTiles ?? [])].filter(valid)).map(n => Math.min(4, n));
++}
++export function opponentThreats(v: PublicView): OpponentThreat[] {
++  return v.players.flatMap((p, i) => {
++    if (i === v.self || p.won) return [];
++    const history = p.discards ?? p.river, exposed = p.melds.filter(m => !m.concealed);
++    const colors = exposed.flatMap(m => m.tiles).filter(t => valid(t) && t < 27);
++    const colorCounts = [0,1,2].map(s => colors.filter(t => suit(t) === s).length);
++    const dom = colorCounts.indexOf(Math.max(...colorCounts));
++    const offColor = history.filter(t => t >= 27 || suit(t) !== dom).length / Math.max(1, history.length);
++    const flushSuit = exposed.length >= 2 && colors.length >= 6 && colorCounts[dom] === colors.length && offColor >= .45 ? dom : -1;
++    const triplet = exposed.length >= 2 && exposed.every(m => m.kind !== "chow");
++    const recentMiddle = history.slice(-3).filter(t => t < 27 && rank(t) >= 3 && rank(t) <= 7).length;
++    const readiness = p.melds.length === 4 && p.handCount <= 2 ? .97 : clamp(.1 + p.melds.length * .12 +
++      Math.min(history.length, 20) * .011 + (history.length >= 6 ? recentMiddle * .025 : 0) +
++      (v.remaining < 25 ? .1 : 0), .08, .9);
++    let value = 1;
++    if (v.config.scoring) { if (flushSuit >= 0) value *= 2; if (triplet) value *= 1.45; }
++    return [{ player: i, readiness, value, flushSuit, triplet }];
++  });
++}
++export function discardRisk(v: PublicView, t: Tile, known = knownCounts(v), threats = opponentThreats(v)) {
++  const unseen = (x: number) => Math.max(0, 4 - (known[x] ?? 0));
++  const globalDiscards = v.players.reduce((n,p) => n + (p.discards ?? p.river).filter(x => x === t).length, 0);
++  const factors: string[] = [];
++  if (globalDiscards) factors.push(`全桌已弃${globalDiscards}张同牌`);
++  if (known[t] >= 3) factors.push(`已知${known[t]}张同牌，对倒／单吊机会降低`);
+   let risk = 0;
+-  const known = knownCounts(v);
+-  v.players.forEach((p, i) => {
+-    if (i === v.self || p.won) return;
+-    if (v.config.mode === "sichuan" && suit(t) === p.voidSuit) return;
+-    // A historical discard is evidence, not guaranteed safety: neither mode has riichi furiten.
+-    let r = 1 + p.melds.length * 0.5 + Math.min(p.river.length, 14) * 0.055;
+-    if (p.river.includes(t)) r *= 0.32;
+-    if (known[t] >= 3) r *= 0.45;
+-    if (t >= 27) {
+-      r *= 0.75;
+-      if (known[t] >= 2) r *= 0.6;
+-    } else {
+-      const n = rank(t);
+-      if (n === 1 || n === 9) r *= 0.75;
+-      const blocked =
+-        (n >= 3 && known[t - 1] === 4) || (n <= 7 && known[t + 1] === 4);
+-      if (blocked) r *= 0.65;
+-      if (
+-        p.river.some((x) => suit(x) === suit(t) && Math.abs(rank(x) - n) === 3)
+-      )
+-        r *= 0.82;
+-    }
+-    risk += r;
+-  });
+-  return risk;
+-}
++  for (const threat of threats) {
++    const p = v.players[threat.player], history = p.discards ?? p.river;
++    if (v.config.mode === "sichuan" && suit(t) === p.voidSuit) continue;
++    // Estimate concealed completion shapes without accessing the concealed hand.
++    const pairPotential = unseen(t) / 4;
++    let sequencePotential = 0;
++    if (t < 27 && !threat.triplet && p.melds.length < 4) {
++      for (let st = t - 2; st <= t; st++) {
++        if (st < 0 || st % 9 > 6 || suit(st) !== suit(t)) continue;
++        const neighbors = [st,st+1,st+2].filter(x => x !== t);
++        sequencePotential += unseen(neighbors[0]) * unseen(neighbors[1]) / 16;
++      }
++    }
++    let shape = p.melds.length === 4 ? pairPotential : .65 * pairPotential + .22 * sequencePotential;
++    // Special MCR structures and changing waits prevent treating old discards/suji as absolute safety.
++    if (v.config.mode === "mcr" && p.melds.length === 0) shape += .04;
++    let evidence = 1;
++    if (history.slice(-3).includes(t)) evidence *= .5;
++    else if (history.includes(t)) evidence *= .72;
++    evidence *= Math.max(.65, 1 - globalDiscards * .08);
++    if (threat.flushSuit >= 0) {
++      evidence *= t < 27 && suit(t) === threat.flushSuit ? 1.55 : .55;
++      if (t < 27 && suit(t) === threat.flushSuit) factors.push(`${["", "下家", "对家", "上家"][(threat.player-v.self+4)%4]}副露与弃牌指向同花色`);
++    }
++    if (threat.readiness > .65) factors.push(`${["", "下家", "对家", "上家"][(threat.player-v.self+4)%4]}较可能听牌`);
++    risk += shape * evidence * threat.readiness * threat.value * 3;
++  }
++  return { risk, factors: [...new Set(factors)] };
++}
++function danger(v: PublicView, t: Tile) { return discardRisk(v, t).risk; }
+ function targets(v: PublicView, h: Tile[]) {
+   const all = [...h, ...v.melds.flatMap((m) => m.tiles)];
+   const c = counts(h),
+@@ -76,7 +101,6 @@
+     } else {
+       // MCR rewards 8-point paths: concealed play, pure straight and mixed triple chow.
+       if (!v.melds.some((m) => !m.concealed)) bonus += 1.3;
+-      for (let st = 0; st < 3; st++)
+         for (let n = 0; n < 7; n++) {
+           let filled = 0;
+           for (let s = 0; s < 3; s++)
+@@ -99,58 +123,75 @@
+   }
+   return { bonus, name };
+ }
+-export function advise(v: PublicView): Advice[] {
+-  const k = knownCounts(v);
+-  const forced =
+-    v.config.mode === "sichuan"
+-      ? v.hand.filter((t) => suit(t) === v.voidSuit)
+-      : [];
+-  const candidates = [...new Set(forced.length ? forced : v.hand)],
+-    results: Advice[] = [];
++
++function usefulTiles(v: PublicView, h: Tile[], melds: Meld[], known: number[], e: ReturnType<typeof evaluate>) {
++  const concealed = counts(h);
++  return e.useful.filter(t => valid(t) && t < (v.config.mode === "mcr" ? 34 : 27) &&
++    (v.config.mode !== "sichuan" || suit(t) !== v.voidSuit))
++    .filter(t => !(e.shanten === 0 && v.config.mode === "mcr" && v.config.scoring && v.config.mcrEightPointMinimum !== false) ||
++      rawScore(h, melds, t, 1 | (known[t] - concealed[t] >= 3 ? 2 : 0), v.seat, v.wind).total >= 8)
++    .map(tile => ({ tile, left: Math.max(0, 4 - known[tile]) }));
++}
++function followup(v: PublicView, h: Tile[], known: number[], draws: Advice["useful"]) {
++  let total = 0, weights = 0;
++  for (const draw of [...draws].filter(d => d.left > 0).sort((a,b) => b.left-a.left).slice(0,3)) {
++    const hand = [...h, draw.tile], nextKnown = [...known]; nextKnown[draw.tile]++;
++    let bestShanten = 99, bestUkeire = 0;
++    for (const discard of new Set(hand)) {
++      const next = [...hand]; next.splice(next.indexOf(discard),1);
++      const e = evaluate(next,v.melds,v.config.mode === "mcr");
++      const count = usefulTiles(v,next,v.melds,nextKnown,e).reduce((n,t) => n+t.left,0);
++      if (e.shanten < bestShanten || e.shanten === bestShanten && count > bestUkeire) { bestShanten=e.shanten;bestUkeire=count; }
++    }
++    total += bestUkeire * draw.left; weights += draw.left;
++  }
++  return weights ? total / weights : 0;
++}
++const cache = new Map<string, Advice[]>();
++export function advise(v: PublicView, options: AdviceOptions = {}): Advice[] {
++  const difficulty = options.difficulty ?? v.config.aiDifficulty ?? "advanced", style = options.style ?? "balanced";
++  const key = JSON.stringify([v,difficulty,style]), old = cache.get(key);
++  if (old) return structuredClone(old);
++  const known = knownCounts(v), threats = opponentThreats(v);
++  const forced = v.config.mode === "sichuan" ? v.hand.filter(t => suit(t) === v.voidSuit) : [];
++  const candidates = [...new Set(forced.length ? forced : v.hand)], results: Advice[] = [];
++  const threat = Math.max(0,...threats.map(t => t.readiness * t.value));
+   for (const tile of candidates) {
+-    const h = [...v.hand];
+-    h.splice(h.indexOf(tile), 1);
+-    const e = evaluate(h, v.melds, v.config.mode === "mcr");
+-    const useful = e.useful
+-      .filter(
+-        (t) =>
+-          t < (v.config.mode === "mcr" ? 34 : 27) &&
+-          (v.config.mode !== "sichuan" || suit(t) !== v.voidSuit),
+-      )
+-      .map((t) => ({ tile: t, left: Math.max(0, 4 - k[t]) }));
+-    const ukeire = useful.reduce((s, t) => s + t.left, 0),
+-      risk = danger(v, tile),
+-      target = targets(v, h);
+-    const voidLeft =
+-      v.config.mode === "sichuan"
+-        ? h.filter((t) => suit(t) === v.voidSuit).length
+-        : 0;
+-    const defenseWeight =
+-      v.remaining < 24 && e.shanten >= 2
+-        ? 3.4
+-        : v.remaining < 38 && e.shanten >= 1
+-          ? 1.8
+-          : 0.65;
+-    const utility =
+-      -e.shanten * 18 +
+-      ukeire * 0.48 -
+-      risk * defenseWeight +
+-      target.bonus -
+-      voidLeft * 4;
+-    results.push({
+-      tile,
+-      shanten: e.shanten,
+-      ukeire,
+-      useful,
+-      risk,
+-      utility,
+-      target: target.name,
+-      reason: forced.length
+-        ? "定缺要求优先打出缺门牌"
+-        : `${e.shanten === 0 ? "保持听牌" : `${e.shanten}向听`}；预计${ukeire}张有效进张；${target.name}；${risk < 1.4 ? "相对低风险" : risk < 3 ? "风险适中" : "注意防守"}`,
+-    });
+-  }
+-  return results.sort((a, b) => b.utility - a.utility || a.tile - b.tile);
++    const h = [...v.hand]; h.splice(h.indexOf(tile),1);
++    const e = evaluate(h,v.melds,v.config.mode === "mcr");
++    const useful = usefulTiles(v,h,v.melds,known,e), ukeire = useful.reduce((n,t) => n+t.left,0);
++    const effectiveShanten = e.shanten === 0 && !ukeire ? 1 : e.shanten;
++    const { risk, factors } = discardRisk(v,tile,known,threats);
++    const target = difficulty === "easy" ? { bonus: 0, name: "优先成牌" } : targets(v,h);
++    const late = v.remaining < 25;
++    const baseDefense = style === "attack" ? .12 : style === "defense" ? 2.5 :
++      e.shanten <= 0 ? .25 : e.shanten === 1 ? .4 : late ? 1.2 : .6;
++    const defensePenalty = difficulty === "easy" ? 0 : risk * baseDefense * (difficulty === "normal" ? .6 : 1) * Math.max(.5, threat);
++    const offenseScore = -effectiveShanten * 24 + ukeire * .8 + target.bonus;
++    results.push({ tile,shanten:e.shanten,effectiveShanten,ukeire,useful,risk,offenseScore,defensePenalty,
++      futureQuality:0,utility:offenseScore-defensePenalty,target:target.name,riskFactors:factors,reason:"" });
++  }
++  const minimum = Math.min(...results.map(r => r.effectiveShanten));
++  // Attack and ordinary balanced play never trade an extra shanten for a small risk reduction.
++  const canFold = difficulty !== "easy" && (style === "defense" && threat >= .65 || style === "balanced" && threat > 1.1 && v.remaining < 20 && minimum >= 2);
++  if (!canFold) results.forEach(r => { if (r.effectiveShanten > minimum) r.utility -= 1000; });
++  if (difficulty === "advanced") {
++    const finalists = [...results].filter(r => r.effectiveShanten === minimum).sort((a,b) => b.offenseScore-a.offenseScore).slice(0,3);
++    for (const r of finalists) {
++      const h=[...v.hand];h.splice(h.indexOf(r.tile),1);
++      r.futureQuality=followup(v,h,known,r.useful);
++      r.utility += r.futureQuality * .07;
++    }
++  }
++  for (const r of results) r.reason = forced.length ? "定缺要求优先打出缺门牌" :
++    `${r.shanten === 0 ? "保持结构听牌" : `${r.shanten}向听`}；约${r.ukeire}张可用进张；${r.target}；` +
++    `${style === "attack" ? "偏进攻" : style === "defense" ? "偏防守" : "攻守平衡"}，防守扣分${r.defensePenalty.toFixed(1)}` +
++    (r.riskFactors.length ? `；${r.riskFactors.join("、")}` : "") +
++    (r.shanten === 0 && r.effectiveShanten > 0 ? v.config.mode === "mcr" && v.config.scoring && v.config.mcrEightPointMinimum !== false
++      ? "；目前无剩余且满足8分的常规自摸进张" : "；听牌张已无剩余可用牌" : "");
++  results.sort((a,b) => b.utility-a.utility || a.risk-b.risk || a.tile-b.tile);
++  if (cache.size >= 256) cache.clear();cache.set(key,structuredClone(results));
++  return results;
+ }
+ export function chooseResponse(v: PublicView, actions: Action[]): Action {
+   const win = actions.find((a) => a.type === "win");
+@@ -191,7 +232,8 @@
+             hand: h,
+             melds,
+             players: v.players.map((p, i) =>
+-              i === v.self ? { ...p, melds } : p,
++              i === v.self ? { ...p, melds } : i === v.lastDiscard?.from && p.river.at(-1) === v.lastDiscard.tile
++                ? { ...p, river: p.river.slice(0,-1) } : p,
+             ),
+           })[0];
+     let gain = (base.shanten - e.shanten) * 15;
+diff --git a/src/engine/game.ts b/src/engine/game.ts
+--- a/src/engine/game.ts
++++ b/src/engine/game.ts
+@@ -62,6 +62,7 @@
+       hand: [],
+       melds: [],
+       river: [],
++      discards: [],
+       voidSuit: -1,
+       won: false,
+       score: prior?.players[i].score ?? 0,
+@@ -311,7 +312,9 @@
+     throw Error("当前不能打这张牌");
+   const p = g.players[i];
+   p.hand.splice(p.hand.indexOf(t), 1);
++  p.discards ??= historicalDiscards(g, i);
+   p.river.push(t);
++  p.discards.push(t);
+   g.discardCount++;
+   log(g, `${p.name}打出${tileName(t)}`);
+   setPending(g, t, i);
+@@ -359,7 +362,7 @@
+   p.won = true;
+   if (!self) p.hand.push(t);
+   sortHand(p.hand);
+-  g.winners.push({ player: i, from, tile: t, self, score: sc, received });
++  g.winners.push({ eventId: `${g.round}:${g.discardCount}:${self ? "self" + i : from}:${t}`, player: i, from, tile: t, self, score: sc, received });
+   log(
+     g,
+     `${p.name}${self ? "自摸" : "胡牌"} · ${g.config.scoring ? `${sc.fan}${g.config.mode === "mcr" ? "分" : "番"}` : "固定分"} · 收入${received}`,
+@@ -430,12 +433,13 @@
+     g.pending.responses[i]
+   )
+     throw Error("当前没有待响应的操作");
+-  if (
+-    a.type !== "pass" &&
+-    !g.pending.actions[i].some((x) => JSON.stringify(x) === JSON.stringify(a))
+-  )
+-    throw Error("不是合法操作");
+-  g.pending.responses[i] = a;
++  g.pending.responses[i] = a.type === "pass" ? { type: "pass" } : canonicalAction(g.pending.actions[i], a);
++}
++export function canonicalAction(actions: Action[], input: Action): Action {
++  const action = actions.find(a => a.type === input?.type && a.tile === input.tile &&
++    a.meldIndex === input.meldIndex && JSON.stringify(a.tiles ?? []) === JSON.stringify(input.tiles ?? []));
++  if (!action) throw Error("不是合法操作");
++  return JSON.parse(JSON.stringify(action));
+ }
+ export function resolveClaims(g: Game) {
+   const q = g.pending;
+@@ -444,6 +448,8 @@
+   let winners = order.filter((i) => q.responses[i]?.type === "win");
+   if (!rules[g.config.mode].multiWin) winners = winners.slice(0, 1);
+   if (winners.length) {
++    order.filter(i => !winners.includes(i) && q.responses[i]?.type !== "pass").forEach(i =>
++      log(g, `${g.players[i].name}选择${({ chow: "吃", pung: "碰", kong: "杠", win: "胡" } as Record<string, string>)[q.responses[i]!.type]}，因胡牌优先或胡牌顺序取消`));
+     const scores = winners.map((i) => winScore(g, i, false));
+     winners.forEach((i, k) => receiveWin(g, i, false, scores[k]));
+     if (q.rob) removeTiles(g.players[q.from], [q.tile]);
+@@ -510,8 +516,7 @@
+   return true;
+ }
+ export function act(g: Game, i: number, a: Action) {
+-  if (!ownActions(g, i).some((x) => JSON.stringify(x) === JSON.stringify(a)))
+-    throw Error("当前不能进行此操作");
++  a = canonicalAction(ownActions(g, i), a);
+   if (a.type === "win") {
+     receiveWin(g, i, true);
+     frame(g, `${g.players[i].name} · 自摸`);
+@@ -614,7 +619,16 @@
+ }
+ export function publicView(g: Game, i: number): PublicView {
+   const p = g.players[i];
++  const publicWinningTiles: Tile[] = [];
++  const events = new Map<string, typeof g.winners>();
++  g.winners.forEach(w => {
++    const id = w.eventId ?? `${w.from}:${w.tile}`;
++    events.set(id, [...(events.get(id) ?? []), w]);
++  });
++  for (const batch of events.values()) if (!batch.some(w => w.player === i)) publicWinningTiles.push(batch[0].tile);
+   return {
++    publicWinningTiles,
++    lastDiscard: g.pending && !g.pending.rob ? { tile: g.pending.tile, from: g.pending.from } : undefined,
+     config: g.config,
+     self: i,
+     hand: [...p.hand],
+@@ -628,11 +642,19 @@
+         m.concealed && j !== i ? { ...m, tiles: [] } : clone(m),
+       ),
+       river: [...q.river],
++      discards: historicalDiscards(g, j),
+       voidSuit: q.voidSuit,
+       won: q.won,
+       handCount: q.hand.length,
+     })),
+   };
++}
++export function historicalDiscards(g: Game, seat: number): Tile[] {
++  const p = g.players[seat];
++  if (p.discards) return [...p.discards];
++  const history = g.frames.filter(f => f.lastFrom === seat && f.lastTile !== undefined &&
++    f.label.endsWith(" · 打" + tileName(f.lastTile))).map(f => f.lastTile!);
++  return history.length ? history : [...p.river];
+ }
+ export function snapshot(g: Game): Frame {
+   return {
+diff --git a/src/engine/types.ts b/src/engine/types.ts
+--- a/src/engine/types.ts
++++ b/src/engine/types.ts
+@@ -1,5 +1,7 @@
+ export type Tile = number;
+ export type Mode = "sichuan" | "mcr";
++export type AiDifficulty = "easy" | "normal" | "advanced";
++export type PlayStyle = "attack" | "balanced" | "defense";
+ export type Meld = {
+   kind: "chow" | "pung" | "kong";
+   tiles: Tile[];
+@@ -23,6 +25,7 @@
+   mode: Mode;
+   scoring: boolean;
+   mcrEightPointMinimum: boolean;
++  aiDifficulty: AiDifficulty;
+   base: number;
+   cap: number;
+   selfDraw: "base" | "fan";
+@@ -32,6 +35,7 @@
+   mode: "sichuan",
+   scoring: true,
+   mcrEightPointMinimum: true,
++  aiDifficulty: "advanced",
+   base: 1,
+   cap: 5,
+   selfDraw: "base",
+@@ -42,6 +46,7 @@
+   hand: Tile[];
+   melds: Meld[];
+   river: Tile[];
++  discards?: Tile[];
+   voidSuit: number;
+   won: boolean;
+   score: number;
+@@ -83,6 +88,7 @@
+   refunded?: boolean;
+ };
+ export type Winner = {
++  eventId?: string;
+   player: number;
+   from: number;
+   tile: Tile;
+@@ -138,6 +144,8 @@
+   previous: Frame[][];
+ };
+ export type PublicView = {
++  publicWinningTiles?: Tile[];
++  lastDiscard?: { tile: Tile; from: number };
+   config: Config;
+   self: number;
+   hand: Tile[];
+@@ -149,6 +157,7 @@
+   players: {
+     melds: Meld[];
+     river: Tile[];
++    discards?: Tile[];
+     voidSuit: number;
+     won: boolean;
+     handCount: number;
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -25,7 +25,7 @@
+ import { advise, chooseOwn, chooseResponse, knownCounts } from "./engine/ai";
+ import { rules } from "./engine/rules";
+ import { BONUS, defaultConfig } from "./engine/types";
+-import type { Game, Config, Action, Frame, Player } from "./engine/types";
++import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
+ import { Tile } from "./Tile";
+ import "./style.css";
+ import { useRoom } from "./online/useRoom";
+@@ -74,6 +74,7 @@
+   }
+ }
+ const amount = (n: number) => (n > 0 ? "+" + n : "" + n);
++const actionName = (type: string) => ({ pass: "过", win: "胡", chow: "吃", pung: "碰", kong: "杠", addedKong: "补杠", concealedKong: "暗杠" } as Record<string,string>)[type] ?? type;
+ function Melds({ p, reveal = false }: { p: Player; reveal?: boolean }) {
+   return (
+     <div className="melds">
+@@ -206,6 +207,11 @@
+           ))}
+         </div>
+         <div className="setup-fields">
++          <label>电脑智能程度
++            <select value={c.aiDifficulty ?? "advanced"} onChange={e => put({ aiDifficulty: e.target.value as AiDifficulty })}>
++              <option value="easy">基础 · 向听与进张</option><option value="normal">标准 · 公开牌与风险</option><option value="advanced">进阶 · 做牌、后续进张与对手推断</option>
++            </select>
++          </label>
+           <label className="switch-row">
+             <div>
+               <strong>计算胡牌番数</strong>
+@@ -411,14 +417,16 @@
+   const [createName, setCreateName] = useState<string | null>(null);
+   const [ready, setReady] = useState(false),
+     [failure, setFailure] = useState(""),
+-    [game, setGame] = useState<Game | null>(online.session ? null : validInitial);
++    [localGame, setGame] = useState<Game | null>(validInitial);
++  const game = online.session ? online.room?.game ?? null : localGame;
+   const [config, setConfig] = useState<Config>(
+       validInitial?.config ?? defaultConfig,
+     ),
+     [setup, setSetup] = useState(!validInitial && !online.session && !new URL(location.href).searchParams.has("room"));
+   const [selected, setSelected] = useState<number[]>([]),
+     [prefs, setPrefs] = useState(
+-      stored(PREF, { hints: true, sound: true, speed: 650 }),
++      { hints: true, sound: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
++        ...stored<Partial<{ hints: boolean; sound: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
+     );
+   const [paused, setPaused] = useState(false),
+     [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
+@@ -445,11 +453,11 @@
+   }, [game, online.session]);
+   useEffect(() => {
+     if (!online.room) return;
+-    setGame(online.room.game);
+     setConfig(online.room.config);
+     setSetup(false);
+     setPaused(false);
+   }, [online.room]);
++  useEffect(() => { online.setAdviceStyle(prefs.assistantStyle); }, [prefs.assistantStyle]);
+   useEffect(() => {
+     setSelected([]);
+     setReplay(null);
+@@ -546,9 +554,9 @@
+   const analysis = useMemo(
+     () =>
+       ready && game && ourTurn && prefs.hints && !replay
+-        ? advise(publicView(game, 0))
++        ? online.session ? online.advice : advise(publicView(game, 0), { style: prefs.assistantStyle, difficulty: "advanced" })
+         : [],
+-    [ready, game, ourTurn, prefs.hints, replay],
++    [ready, game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
+   );
+   const waiting = useMemo(() => {
+     if (
+@@ -578,7 +586,7 @@
+   }, [ready, game, prefs.hints]);
+   const playerActions = online.session ? online.room?.actions ?? [] : game ? ownActions(game, 0) : [];
+   const claim =
+-    online.session ? online.room && !online.room.seats[0].autoplay && !online.busy ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
++    online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
+       ? game.pending.actions[0]
+       : [];
+   const display = game ? (replay ? replay[replayIndex] : snapshot(game)) : null;
+@@ -690,6 +698,8 @@
+                   ? "你已胡牌，观看剩余对局"
+                   : `${game.players[game.current].name}正在思考`;
+   }
++  if (online.pending) status = `正在提交${online.pending.type === "claim" || online.pending.type === "act" ? actionName(online.pending.action.type) : "操作"}…`;
++  else if (online.room?.game?.pending?.responses[0] && online.room.game.pending.actions[0].length) status = `已选择${actionName(online.room.game.pending.responses[0].type)}，等待其他玩家`;
+   return (
+     <div className="app">
+       <header className="topbar">
+@@ -736,6 +746,21 @@
+             </h2>
+           </div>
+           <div className="game-controls">
++            <label>电脑
++              <select aria-label="电脑智能程度" value={game?.config.aiDifficulty ?? config.aiDifficulty ?? "advanced"}
++                disabled={!!online.session && (!online.room?.isHost || online.busy)}
++                onChange={e => { const difficulty = e.target.value as AiDifficulty;
++                  if (online.session) void online.send({ type: "difficulty", difficulty });
++                  else { setConfig({ ...config, aiDifficulty: difficulty }); if (game) setGame({ ...game, config: { ...game.config, aiDifficulty: difficulty } }); }
++                }}>
++                <option value="easy">基础</option><option value="normal">标准</option><option value="advanced">进阶</option>
++              </select>
++            </label>
++            <label>助手
++              <select aria-label="打牌助手风格" value={prefs.assistantStyle} onChange={e => setPrefs({ ...prefs, assistantStyle: e.target.value as PlayStyle })}>
++                <option value="attack">偏进攻</option><option value="balanced">攻守平衡</option><option value="defense">偏防守</option>
++              </select>
++            </label>
+             <label>
+               <input
+                 type="checkbox"
+@@ -921,7 +946,7 @@
+               <div className="turn-status">
+                 <span className={`status-dot ${ourTurn ? "you" : ""}`} />
+                 <strong>{paused && !replay ? "对局已暂停" : status}</strong>
+-                <span className="muted">{notice || saveWarning}</span>
++                <span className="muted">{online.error || notice || saveWarning}</span>
+               </div>
+               <div className="actions">
+                 {game && !replay && game.phase === "exchange" && (!online.session || (online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy)) && (
+@@ -964,7 +989,8 @@
+                   claim.map((a, k) => (
+                     <button
+                       className={a.type === "win" ? "primary" : ""}
+-                      key={k}
++                      key={`${a.type}:${a.tile}:${a.tiles?.join(",")}`}
++                      disabled={online.busy}
+                       onClick={() => change((g) => respond(g, 0, a), a.type, { type: "claim", action: a })}
+                     >
+                       {a.type === "win"
+@@ -978,6 +1004,7 @@
+                   ))}
+                 {!replay && claim.length > 0 && (
+                   <button
++                    disabled={online.busy}
+                     onClick={() =>
+                       change((g) => respond(g, 0, { type: "pass" }), "pass", { type: "claim", action: { type: "pass" } })
+                     }
+@@ -1157,6 +1184,8 @@
+               <div className="advice-panel">
+                 <span className="eyebrow">A LITTLE CLARITY</span>
+                 <h3>{replay ? "先看选择，再看结果。" : "下一张，怎么打？"}</h3>
++                {online.session && prefs.hints && ourTurn && (online.adviceLoading || online.adviceError) &&
++                  <p className="tiny" role="status">{online.adviceError || "后端正在重新计算当前风格的建议…"}</p>}
+                 {!prefs.hints ? (
+                   <p className="muted">
+                     提示已关闭。打开右上方“提示”即可查看向听数与进张建议。
+diff --git a/src/online/protocol.ts b/src/online/protocol.ts
+--- a/src/online/protocol.ts
++++ b/src/online/protocol.ts
+@@ -1,9 +1,10 @@
+-import type { Action, Config, Game } from "../engine/types";
++import type { Action, Config, Game, AiDifficulty } from "../engine/types";
+ 
+ export type RoomCommand =
+   | { type: "start" | "next" | "takeback" | "autoplay" | "leave" }
+   | { type: "exchange"; tiles: number[] }
+   | { type: "void"; suit: number }
++  | { type: "difficulty"; difficulty: AiDifficulty }
+   | { type: "discard"; tile: number }
+   | { type: "act" | "claim"; action: Action };
+ export type RoomView = {
+diff --git a/src/online/updates.ts b/src/online/updates.ts
+new file mode 100644
+--- /dev/null
++++ b/src/online/updates.ts
+@@ -0,0 +1,11 @@
++import type { RoomView } from "./protocol";
++// An older GET must not replace the result of a command that started after that GET.
++export class RoomUpdates {
++  epoch = 0;
++  current: RoomView | null = null;
++  beginCommand() { return ++this.epoch; }
++  accept(view: RoomView, epoch = this.epoch) {
++    if (epoch !== this.epoch || this.current?.id === view.id && this.current.version > view.version) return false;
++    this.current = view; return true;
++  }
++}
+diff --git a/src/online/useRoom.ts b/src/online/useRoom.ts
+--- a/src/online/useRoom.ts
++++ b/src/online/useRoom.ts
+@@ -1,6 +1,8 @@
+ import { useEffect, useRef, useState } from "react";
+-import type { Config } from "../engine/types";
++import type { Config, PlayStyle } from "../engine/types";
+ import type { RoomCommand, RoomSession, RoomView } from "./protocol";
++import type { Advice } from "../engine/ai";
++import { RoomUpdates } from "./updates";
+ const KEY = "quiet-mahjong-online-session";
+ const base = (import.meta.env.VITE_ONLINE_API_URL ?? "").replace(/\/$/, "");
+ function stored(): RoomSession | null {
+@@ -10,24 +12,34 @@
+   const [session, setSession] = useState<RoomSession | null>(stored);
+   const [room, setRoom] = useState<RoomView | null>(null);
+   const [error, setError] = useState("");
++  const [networkError, setNetworkError] = useState("");
++  const [pending, setPending] = useState<RoomCommand | null>(null);
++  const [adviceStyle, setAdviceStyle] = useState<PlayStyle>("balanced");
++  const [advice, setAdvice] = useState<{stage: string; style: PlayStyle; items: Advice[]}>({stage: "",style: "balanced",items: []});
++  const [adviceLoading, setAdviceLoading] = useState(false), [adviceError, setAdviceError] = useState("");
+   const [busy, setBusy] = useState(false);
+   const [connected, setConnected] = useState(false);
+   const sessionRef = useRef(session);
+   sessionRef.current = session;
+   const sending = useRef(false);
+-  const publish = (value: RoomView) => setRoom(old => old?.id === value.id && old.version > value.version ? old : value);
+-  async function request(path: string, s: RoomSession | null, data?: unknown) {
++  const updates = useRef(new RoomUpdates());
++  const activePoll = useRef<AbortController | null>(null);
++  const publish = (value: RoomView, epoch?: number) => { if (updates.current.accept(value, epoch)) setRoom(value); };
++  async function request(path: string, s: RoomSession | null, data?: unknown, signal?: AbortSignal) {
+     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 30000);
++    const abort = () => controller.abort();
++    signal?.addEventListener("abort", abort, { once: true });
+     try {
+       const r = await fetch((s?.origin ?? base) + path, { method: data === undefined ? "GET" : "POST",
+         headers: { ...(data === undefined ? {} : { "Content-Type": "application/json" }), ...(s ? { Authorization: "Bearer " + s.token } : {}) },
+         body: data === undefined ? undefined : JSON.stringify(data), signal: controller.signal });
+       const body = await r.json();
+       if (!r.ok) throw new Error(body.error ?? "联机服务未就绪");
+-      return body as { room: RoomView; token?: string };
+-    } finally { clearTimeout(timeout); }
++      return body as { room: RoomView; token?: string; stage?: string; analysis?: Advice[] };
++    } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
+   }
+   function remember(s: RoomSession | null) {
++    updates.current = new RoomUpdates(); activePoll.current?.abort();
+     sessionRef.current = s; setSession(s);
+     try { if (s) localStorage.setItem(KEY, JSON.stringify(s)); else localStorage.removeItem(KEY); }
+     catch { setError("浏览器无法保存重连凭据，请勿刷新本页"); }
+@@ -43,12 +55,14 @@
+     } catch (e) { setError(e instanceof Error ? e.message : "无法进入房间"); }
+     finally { sending.current = false; setBusy(false); }
+   }
+-  async function send(command: RoomCommand) {
++  async function send(command: RoomCommand, expectedStage = room?.stage) {
+     const s = sessionRef.current;
+-    if (!s || !room || sending.current) return false;
+-    sending.current = true; setBusy(true); setError("");
++    if (!s || !room) return false;
++    if (sending.current) { setError("上一项操作正在提交，请稍候"); return false; }
++    sending.current = true; setBusy(true); setPending(command); setError("");
++    const epoch = updates.current.beginCommand(); activePoll.current?.abort();
+     const requestId = crypto.randomUUID?.() ?? [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, "0")).join("");
+-    const data = { command, stage: room.stage, requestId };
++    const data = { command, stage: expectedStage, requestId };
+     try {
+       // Reuse the command id for a transport retry: a committed operation cannot execute twice.
+       let response;
+@@ -57,26 +71,42 @@
+         if (e instanceof TypeError || (e instanceof DOMException && e.name === "AbortError")) response = await request(`/api/rooms/${s.id}/command`, s, data);
+         else throw e;
+       }
+-      if (sessionRef.current?.token === s.token) publish(response.room);
++      if (sessionRef.current?.token === s.token) publish(response.room, epoch);
+       if (command.type === "leave") { remember(null); setRoom(null); setConnected(false); }
+       return true;
+     } catch (e) { setError(e instanceof Error ? e.message : "操作失败"); return false; }
+-    finally { sending.current = false; setBusy(false); }
++    finally { sending.current = false; setBusy(false); setPending(null); }
+   }
+   useEffect(() => {
+     if (!session) return;
+     let stopped = false, timer: ReturnType<typeof setTimeout>;
+     async function poll() {
++      if (sending.current) { timer = setTimeout(poll, 300); return; }
++      const epoch = updates.current.epoch, controller = new AbortController();
++      activePoll.current = controller;
+       try {
+-        const r = await request(`/api/rooms/${session!.id}`, session);
+-        if (!stopped) { publish(r.room); setConnected(true); setError(""); }
++        const r = await request(`/api/rooms/${session!.id}`, session, undefined, controller.signal);
++        if (!stopped && !sending.current && epoch === updates.current.epoch) { publish(r.room, epoch); setConnected(true); setNetworkError(""); }
+       } catch (e) {
+-        if (!stopped) { setConnected(false); setError(e instanceof Error ? e.message : "连接中断，正在重连"); }
++        if (!stopped && !controller.signal.aborted) { setConnected(false); setNetworkError(e instanceof Error ? e.message : "连接中断，正在重连"); }
+       } finally { if (!stopped) timer = setTimeout(poll, 1000); }
+     }
+     void poll();
+-    return () => { stopped = true; clearTimeout(timer); };
++    return () => { stopped = true; clearTimeout(timer); activePoll.current?.abort(); };
+   }, [session?.id, session?.token]);
++  useEffect(() => {
++    if (!session || !room?.game || room.game.phase !== "turn" || room.game.current !== 0 || room.game.players[0].won) {
++      setAdviceLoading(false); return;
++    }
++    let cancelled = false; const controller = new AbortController(), stage = room.stage;
++    setAdviceLoading(true); setAdviceError("");
++    void request(`/api/rooms/${session.id}/analyze`, session, { style: adviceStyle, stage }, controller.signal)
++      .then(r => { if (!cancelled && r.stage === stage) setAdvice({stage,style:adviceStyle,items:r.analysis ?? []}); })
++      .catch(e => { if (!cancelled) setAdviceError(e instanceof Error ? e.message : "建议计算失败"); })
++      .finally(() => { if (!cancelled) setAdviceLoading(false); });
++    return () => { cancelled = true; controller.abort(); };
++  }, [session?.token, room?.stage, adviceStyle]);
+   function forget() { remember(null); setRoom(null); setConnected(false); setError(""); }
+-  return { session, room, error, busy, connected, enter, send, forget };
++  return { session, room, error: error || networkError, busy, pending, connected, enter, send, forget, setAdviceStyle, adviceLoading, adviceError,
++    advice: advice.stage === room?.stage && advice.style === adviceStyle ? advice.items : [] };
+ }
+diff --git a/src/style.css b/src/style.css
+--- a/src/style.css
++++ b/src/style.css
+@@ -175,6 +175,9 @@
+ }
+ .game-controls {
+   display: flex;
++  flex-wrap: wrap;
++  justify-content: flex-end;
++  max-width: 680px;
+   align-items: center;
+   gap: 13px;
+   font-size: 12px;
+diff --git a/tests/ai.test.ts b/tests/ai.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/ai.test.ts
+@@ -0,0 +1,89 @@
++import test, { before } from "node:test";
++import assert from "node:assert/strict";
++import { initCore, evaluate } from "../src/engine/core";
++import { defaultConfig } from "../src/engine/types";
++import type { PublicView, Game, Action } from "../src/engine/types";
++import { advise, knownCounts, discardRisk, opponentThreats } from "../src/engine/ai";
++import { newGame, publicView, discard, respond, advance } from "../src/engine/game";
++import { configInput } from "../server/validation";
++before(async () => { await initCore(); });
++function tiles(s: string) {
++  const h: number[] = [];
++  for (const m of s.matchAll(/([1-9]+)([mps])|([ESWNCFP])/g)) {
++    if (m[1]) for (const n of m[1]) h.push("mps".indexOf(m[2])*9+Number(n)-1);
++    else h.push(27+"ESWNCFP".indexOf(m[3]));
++  }
++  return h;
++}
++function view(hand: string): PublicView {
++  return { config: {...defaultConfig,mode:"mcr",scoring:false}, self:0,hand:tiles(hand),melds:[],voidSuit:-1,
++    seat:0,wind:0,remaining:40, players:Array.from({length:4},()=>({melds:[],river:[],discards:[],voidSuit:-1,won:false,handCount:13})) };
++}
++test("Physical visible counts don't duplicate claimed history; public winning tiles are accounted for", () => {
++  const v=view("123456789m356p99s");
++  v.players[1].melds=[{kind:"pung",tiles:[13,13,13],from:2,concealed:false}];
++  v.players[2].discards=[13];v.players[2].river=[];
++  v.publicWinningTiles=[4];
++  const k=knownCounts(v);
++  assert.equal(k[13],4); // our five dots + the exposed pung; the claimed discard is not a fifth copy
++  assert.equal(k[4],2); // our five characters + one publicly shown winning tile
++});
++test("Attack preserves the two-sided live wait rather than discarding a useful connector", () => {
++  const v=view("123456789m356p99s");
++  const result=advise(v,{style:"attack",difficulty:"advanced"});
++  assert.equal(result[0].tile,11); // discard 3 dots, keep 56 rather than the 35 closed wait
++  assert.equal(result[0].shanten,0);assert.equal(result[0].ukeire,8);
++  assert.ok(result.filter(a=>a.effectiveShanten>0).every(a=>a.utility<result[0].utility));
++});
++test("A globally discarded six dots beats nine dots when both discard choices retain a single wait", () => {
++  const v=view("123456m789s69pEEE");v.players[1].river=[14];v.players[1].discards=[14];
++  const result=advise(v,{style:"balanced"});
++  const six=result.find(a=>a.tile===14)!,nine=result.find(a=>a.tile===17)!;
++  assert.equal(six.shanten,nine.shanten);assert.equal(six.shanten,0);
++  const noDiscard = structuredClone(v);noDiscard.players[1].river=[];noDiscard.players[1].discards=[];
++  assert.ok(six.risk<discardRisk(noDiscard,14).risk);assert.ok(six.ukeire>nine.ukeire);
++  assert.equal(result[0].tile,14);assert.ok(six.reason.includes("全桌已弃1张同牌"));
++});
++test("Defense adapts to exposed ready hands and style changes without observing hidden hands", () => {
++  const v=view("123456789m356p99s");v.remaining=16;v.config.scoring=true;v.config.mcrEightPointMinimum=false;
++  v.players[1].melds=tiles("222777888p").reduce((m,t,i,ts)=>{if(i%3===0)m.push({kind:"pung",tiles:ts.slice(i,i+3),from:2,concealed:false});return m;},[] as PublicView["melds"]);
++  v.players[1].river=tiles("19m19sEE");v.players[1].discards=[...v.players[1].river];v.players[1].handCount=4;
++  assert.ok(opponentThreats(v)[0].readiness>.6);assert.equal(opponentThreats(v)[0].flushSuit,1);
++  const attack=advise(v,{style:"attack"}),defense=advise(v,{style:"defense"});
++  const a=attack.find(a=>a.tile===11)!,d=defense.find(a=>a.tile===11)!;
++  assert.ok(d.defensePenalty>a.defensePenalty*5);assert.notEqual(a.reason,d.reason);
++  assert.ok(discardRisk(v,11).risk>discardRisk(v,26).risk);
++  v.config.mode="sichuan";v.players[1].voidSuit=1;
++  const withOpponent=discardRisk(v,11).risk;v.players[1].won=true;
++  assert.equal(discardRisk(v,11).risk,withOpponent); // a void suit contributes no win risk
++});
++test("All difficulty levels are deterministic and only return legal own-hand discards", () => {
++  const g=newGame({...defaultConfig,mode:"mcr",mcrEightPointMinimum:false},undefined,421);
++  const v=publicView(g,0);
++  for(const difficulty of ["easy","normal","advanced"] as const){
++    const first=advise(v,{difficulty});assert.deepEqual(first,advise(v,{difficulty}));
++    assert.ok(first.every(a=>v.hand.includes(a.tile)&&Number.isFinite(a.utility)));
++    if(difficulty==="easy")assert.ok(first.every(a=>a.defensePenalty===0&&a.futureQuality===0));
++  }
++  assert.equal(configInput({mode:"mcr"}).aiDifficulty,"advanced");
++  assert.throws(()=>configInput({mode:"mcr",aiDifficulty:"magic"}));
++});
++test("An exhausted structural wait does not outrank a live wait",()=>{
++  const v=view("123456789m69pEEE");v.players[1].river=[17,17,17];v.players[1].discards=[17,17,17];
++  const result=advise(v,{style:"attack"});
++  const dead=result.find(a=>a.tile===14)!,live=result.find(a=>a.tile===17)!;
++  assert.equal(dead.shanten,0);assert.equal(dead.ukeire,0);assert.equal(dead.effectiveShanten,1);
++  assert.equal(live.shanten,0);assert.equal(live.ukeire,3);assert.equal(result[0].tile,17);
++});
++test("Live public view records historical claimed discards, and multi-ron exposes one physical tile", () => {
++  const g=newGame({...defaultConfig,scoring:false},undefined,82);
++  g.phase="turn";g.current=0;g.drawnTile=0;
++  g.players.forEach(p=>{p.melds=[];p.river=[];p.discards=[];p.voidSuit=2;});
++  g.players[0].hand=tiles("1123456789m123p9p");g.players[1].hand=tiles("123456789m123p1m");
++  g.players[2].hand=tiles("123456789m123p1m");g.players[3].hand=tiles("2233445566778p");
++  discard(g,0,0);respond(g,1,{type:"win"});respond(g,2,{type:"win"});
++  if(g.pending!.responses[3]===null)respond(g,3,{type:"pass"});advance(g);
++  assert.deepEqual(g.players[0].river,[]);assert.deepEqual(g.players[0].discards,[0]);
++  assert.deepEqual(publicView(g,3).publicWinningTiles,[0]);
++  assert.deepEqual(publicView(g,1).publicWinningTiles,[]); // own hand already contains that physical winning tile
++});
+diff --git a/tests/claim-sync.test.ts b/tests/claim-sync.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/claim-sync.test.ts
+@@ -0,0 +1,90 @@
++import test, { before } from "node:test";
++import assert from "node:assert/strict";
++import { initCore } from "../src/engine/core";
++import { defaultConfig } from "../src/engine/types";
++import type { Action } from "../src/engine/types";
++import { discard } from "../src/engine/game";
++import { createRoomsApi, stageKey, TURN_MS, NETWORK_GRACE_MS } from "../server/rooms";
++import { MemoryRoomStore } from "../server/store-memory";
++import { RoomUpdates } from "../src/online/updates";
++import type { RoomView } from "../src/online/protocol";
++before(async()=>{await initCore();});
++function tiles(s:string){const h:number[]=[];for(const m of s.matchAll(/([1-9]+)([mps])|([ESWNCFP])/g)){if(m[1])for(const n of m[1])h.push("mps".indexOf(m[2])*9+Number(n)-1);else h.push(27+"ESWNCFP".indexOf(m[3]));}return h;}
++async function fixture(kind: "chow"|"pung"|"kong"|"win") {
++  const store=new MemoryRoomStore();let time=1000000;const api=createRoomsApi(store,()=>time);
++  async function call(path:string,token?:string,data?:unknown){return api(new Request("http://localhost/api/rooms"+path,{method:data===undefined?"GET":"POST",headers:{...(token?{Authorization:"Bearer "+token}:{}),...(data===undefined?{}:{"Content-Type":"application/json"})},body:data===undefined?undefined:JSON.stringify(data)}));}
++  const first=await(await call("",undefined,{name:"房主",config:{...defaultConfig,mode:"mcr",scoring:false}})).json(),id=first.room.id,tokens=[first.token];
++  for(let i=1;i<4;i++)tokens.push((await(await call(`/${id}/join`,undefined,{name:"真人"+i})).json()).token);
++  await call(`/${id}/command`,tokens[0],{stage:"lobby",requestId:crypto.randomUUID(),command:{type:"start"}});
++  const r=(await store.load(id))!,g=r.game!;
++  g.phase="turn";g.current=0;g.drawnTile=0;g.discardCount=5;g.callCount=0;
++  g.players.forEach(p=>{p.hand=[];p.melds=[];p.river=[];p.discards=[];p.voidSuit=-1;});
++  g.players[0].hand=tiles("1123456789m123p9p");
++  g.players[1].hand=tiles(kind==="chow"?"23m456p789s55pEEN":kind==="pung"?"11m234p456p789sEE":kind==="kong"?"111m234p456p789sE":"123456789m123p1m");
++  g.players[2].hand=tiles("23m456789m123p99s"); // another human can win, keeping the response phase open
++  g.players[3].hand=tiles("234m345p567p789sN");
++  discard(g,0,0);r.stage=stageKey(g);r.deadline=time+TURN_MS;r.botAt=time+500;
++  await store.save({...r,version:r.version+1},r.version);
++  const room=(await(await call(`/${id}`,tokens[1])).json()).room as RoomView;
++  const action=room.claims.find(a=>a.type===kind);assert.ok(action,kind);
++  return {store,api,call,id,tokens,room,action,advance:(ms:number)=>{time+=ms;},get time(){return time;}};
++}
++test("Clicking chow, pung, kong or win acknowledges the actual response; later polls and retries cannot turn it into pass",async()=>{
++  for(const kind of ["chow","pung","kong","win"] as const){
++    const f=await fixture(kind), requestId=crypto.randomUUID();
++    // Reverse object property order to exercise semantic validation across JSON serializers.
++    const reordered=Object.fromEntries(Object.entries(f.action).reverse()) as Action;
++    const data={stage:f.room.stage,requestId,command:{type:"claim",action:reordered}};
++    const response=await f.call(`/${f.id}/command`,f.tokens[1],data);assert.equal(response.status,200,kind);
++    const acknowledged=(await response.json()).room as RoomView;
++    assert.equal(acknowledged.game!.pending!.responses[0]!.type,kind);
++    const gate=new RoomUpdates();gate.accept(f.room);
++    const pollEpoch=gate.epoch, commandEpoch=gate.beginCommand();gate.accept(acknowledged,commandEpoch);
++    assert.equal(gate.accept({...f.room,version:acknowledged.version+1},pollEpoch),false);
++    assert.equal(gate.current!.game!.pending!.responses[0]!.type,kind);
++    f.advance(1000);
++    const later=(await(await f.call(`/${f.id}`,f.tokens[1])).json()).room;
++    assert.equal(later.game.pending.responses[0].type,kind);
++    assert.equal((await f.call(`/${f.id}/command`,f.tokens[1],data)).status,200);
++    // Let the other winner explicitly pass. The original click is then actually applied.
++    const other=(await(await f.call(`/${f.id}`,f.tokens[2])).json()).room;
++    await f.call(`/${f.id}/command`,f.tokens[2],{stage:other.stage,requestId:crypto.randomUUID(),command:{type:"claim",action:{type:"pass"}}});
++    const game=(await f.store.load(f.id))!.game!;
++    if(kind==="win"){assert.equal(game.phase,"end");assert.equal(game.winners[0].player,1);}
++    else{assert.equal(game.players[1].melds[0].kind,kind==="chow"?"chow":kind==="pung"?"pung":"kong");assert.equal(game.current,1);}
++  }
++});
++test("An already selected call is explicitly cancelled when another player wins; it isn't silently changed to pass",async()=>{
++  const f=await fixture("pung");
++  await f.call(`/${f.id}/command`,f.tokens[1],{stage:f.room.stage,requestId:crypto.randomUUID(),command:{type:"claim",action:f.action}});
++  const other=(await(await f.call(`/${f.id}`,f.tokens[2])).json()).room;
++  assert.ok(other.claims.some((a:Action)=>a.type==="win"));
++  await f.call(`/${f.id}/command`,f.tokens[2],{stage:other.stage,requestId:crypto.randomUUID(),command:{type:"claim",action:{type:"win"}}});
++  const g=(await f.store.load(f.id))!.game!;assert.equal(g.winners[0].player,2);
++  assert.ok(g.log.some(s=>s.includes("选择碰")&&s.includes("胡牌优先")));
++});
++test("Network grace accepts a live click at the deadline, but cannot replay a claim from a different stage",async()=>{
++  const f=await fixture("pung");f.advance(TURN_MS+NETWORK_GRACE_MS-100);
++  // A real heartbeat renews the seat; it does not auto-pass inside the network grace period.
++  const r=(await f.store.load(f.id))!;r.seats.forEach(s=>{if(s)s.seen=f.time;});await f.store.save({...r,version:r.version+1},r.version);
++  const data={stage:f.room.stage,requestId:crypto.randomUUID(),command:{type:"claim",action:f.action}};
++  assert.equal((await f.call(`/${f.id}/command`,f.tokens[1],data)).status,200);
++  assert.equal((await f.call(`/${f.id}/command`,f.tokens[2],{...data,requestId:crypto.randomUUID(),stage:"old-stage"})).status,409);
++});
++test("Room difficulty is host-controlled and backend assistant styles are personal read-only requests",async()=>{
++  const f=await fixture("pung"),before=(await f.store.load(f.id))!;
++  const change={stage:f.room.stage,requestId:crypto.randomUUID(),command:{type:"difficulty",difficulty:"easy"}};
++  assert.equal((await f.call(`/${f.id}/command`,f.tokens[1],change)).status,403);
++  assert.equal((await f.call(`/${f.id}/command`,f.tokens[0],change)).status,200);
++  assert.equal((await f.store.load(f.id))!.game!.config.aiDifficulty,"easy");
++  const r=(await f.store.load(f.id))!;r.game!.phase="turn";r.game!.pending=null;r.game!.current=1;
++  r.game!.players[1].hand.push(14);r.stage=stageKey(r.game);await f.store.save({...r,version:r.version+1},r.version);
++  const version=(await f.store.load(f.id))!.version;
++  for(const style of ["attack","balanced","defense"]){
++    const response=await f.call(`/${f.id}/analyze`,f.tokens[1],{style,stage:r.stage});assert.equal(response.status,200);
++    const advice=await response.json();assert.ok(advice.analysis.length>0);assert.equal(advice.style,style);
++    assert.ok(advice.analysis.every((a:{tile:number})=>r.game!.players[1].hand.includes(a.tile)));
++  }
++  assert.equal((await f.store.load(f.id))!.version,version); // style changes neither the game nor its clock
++  assert.equal((await f.call(`/${f.id}/analyze`,undefined,{style:"attack"})).status,401);
++});
+diff --git a/tests/rooms.test.ts b/tests/rooms.test.ts
+--- a/tests/rooms.test.ts
++++ b/tests/rooms.test.ts
+@@ -7,7 +7,7 @@
+ import { defaultConfig } from "../src/engine/types";
+ import { chooseExchange, chooseVoid, publicView } from "../src/engine/game";
+ import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
+-import { createRoomsApi, DISCONNECT_MS, TURN_MS, tickRoom, roomView } from "../server/rooms";
++import { createRoomsApi, DISCONNECT_MS, TURN_MS, NETWORK_GRACE_MS, tickRoom, roomView, stageKey } from "../server/rooms";
+ import { MemoryRoomStore } from "../server/store-memory";
+ import { SqliteRoomStore } from "../server/store-sqlite";
+ import { withCors } from "../server/cors";
+@@ -93,7 +93,7 @@
+   const r = (await s.store.load(id))!;
+   r.game!.current = 0; r.game!.phase = "turn"; r.game!.pending = null;
+   r.stage = `${r.game!.round}:turn:0:${r.game!.frames.length}`;
+-  r.deadline = s.time - 1; r.botAt = s.time + 100000;
++  r.deadline = s.time - NETWORK_GRACE_MS - 1; r.botAt = s.time + 100000;
+   tickRoom(r, s.time); assert.equal(r.seats[0]!.auto, true);
+   await s.store.save({ ...r, version: r.version + 1 }, r.version);
+   const view = roomView(r, 0, s.time);
+@@ -149,3 +149,21 @@
+     assert.equal((await s.read(id, first.token)).game!.round, 2);
+   }
+ });
++test("Each computer difficulty finishes both rule modes through the room API",async()=>{
++  for(const mode of ["sichuan","mcr"] as const)for(const difficulty of ["easy","normal","advanced"] as const){
++    const s=setup(mode),first=await s.create(),id=first.room.id;
++    await s.send(id,first.token,first.room,{type:"difficulty",difficulty});
++    await s.send(id,first.token,first.room,{type:"start"});
++    const begun=await s.read(id,first.token);
++    await s.send(id,first.token,begun,{type:"autoplay"});
++    let finished=false;
++    for(let turn=0;turn<800;turn++){
++      s.advance();const state=await s.read(id,first.token);
++      assert.equal(state.config.aiDifficulty,difficulty);
++      if(state.game!.phase==="end"){
++        assert.equal(state.game!.players.reduce((sum,p)=>sum+p.score,0),0);finished=true;break;
++      }
++    }
++    assert.ok(finished,`${mode}/${difficulty} did not terminate`);
++  }
++});

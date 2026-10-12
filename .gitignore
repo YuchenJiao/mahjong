@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vercel/
+.openai/
+.sites-runtime/
+.sites-checkout*/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+.data/

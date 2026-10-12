@@ -25,8 +25,10 @@ import {
 import { advise, chooseOwn, chooseResponse, knownCounts } from "./engine/ai";
 import { rules } from "./engine/rules";
 import { BONUS, defaultConfig } from "./engine/types";
-import type { Game, Config, Action, Frame, Player } from "./engine/types";
+import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
 import { Tile } from "./Tile";
+import { useTableFeedback } from "./feedback/useTableFeedback";
+import { eventLabel } from "./feedback/events";
 import "./style.css";
 import { useRoom } from "./online/useRoom";
 import { RoomPanel } from "./online/RoomPanel";
@@ -49,7 +51,7 @@ function sound(kind: string, enabled: boolean) {
   if (!enabled) return;
   try {
     audio ??= new AudioContext();
-    void audio.resume();
+    void audio.resume().catch(() => {});
     const notes =
       kind === "win"
         ? [440, 554, 659]
@@ -74,6 +76,7 @@ function sound(kind: string, enabled: boolean) {
   }
 }
 const amount = (n: number) => (n > 0 ? "+" + n : "" + n);
+const actionName = (type: string) => ({ pass: "过", win: "胡", chow: "吃", pung: "碰", kong: "杠", addedKong: "补杠", concealedKong: "暗杠" } as Record<string,string>)[type] ?? type;
 function Melds({ p, reveal = false }: { p: Player; reveal?: boolean }) {
   return (
     <div className="melds">
@@ -110,6 +113,7 @@ function Opponent({
   dealer,
   reveal = false,
   winningTile,
+  activity,
 }: {
   p: Player;
   seat: number;
@@ -117,12 +121,13 @@ function Opponent({
   dealer: boolean;
   reveal?: boolean;
   winningTile?: number;
+  activity?: string;
 }) {
   // Only one copy of the winning tile is public before the round ends.
   const winningIndex = p.won ? p.hand.lastIndexOf(winningTile ?? -1) : -1;
   return (
     <section
-      className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""}`}
+      className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""} ${activity ? "action-flash" : ""}`}
     >
       <div className="player-meta">
         <span className="avatar">{p.name[0]}</span>
@@ -145,6 +150,7 @@ function Opponent({
           {amount(p.score)}
         </b>
       </div>
+      <span className="player-action" aria-hidden={!activity}>{activity ?? ""}</span>
       <div className="opponent-hand">
         {p.hand.map((t, k) => (
           <Tile key={k} tile={t} small hidden={!reveal && k !== winningIndex} />
@@ -206,6 +212,11 @@ function Setup({
           ))}
         </div>
         <div className="setup-fields">
+          <label>电脑智能程度
+            <select value={c.aiDifficulty ?? "advanced"} onChange={e => put({ aiDifficulty: e.target.value as AiDifficulty })}>
+              <option value="easy">基础 · 向听与进张</option><option value="normal">标准 · 公开牌与风险</option><option value="advanced">进阶 · 做牌、后续进张与对手推断</option>
+            </select>
+          </label>
           <label className="switch-row">
             <div>
               <strong>计算胡牌番数</strong>
@@ -411,14 +422,17 @@ function App() {
   const [createName, setCreateName] = useState<string | null>(null);
   const [ready, setReady] = useState(false),
     [failure, setFailure] = useState(""),
-    [game, setGame] = useState<Game | null>(online.session ? null : validInitial);
+    [localGame, setGame] = useState<Game | null>(validInitial);
+  const game = online.session ? online.room?.game ?? null : localGame;
+  const [localSession, setLocalSession] = useState(0);
   const [config, setConfig] = useState<Config>(
       validInitial?.config ?? defaultConfig,
     ),
     [setup, setSetup] = useState(!validInitial && !online.session && !new URL(location.href).searchParams.has("room"));
   const [selected, setSelected] = useState<number[]>([]),
     [prefs, setPrefs] = useState(
-      stored(PREF, { hints: true, sound: true, speed: 650 }),
+      { hints: true, sound: true, voice: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
+        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
     );
   const [paused, setPaused] = useState(false),
     [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
@@ -427,6 +441,9 @@ function App() {
     [replayPlay, setReplayPlay] = useState(false),
     [notice, setNotice] = useState(""),
     [saveWarning, setSaveWarning] = useState("");
+  const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
+  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound);
+  const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
   useEffect(() => {
     initCore()
       .then(() => setReady(true))
@@ -445,11 +462,11 @@ function App() {
   }, [game, online.session]);
   useEffect(() => {
     if (!online.room) return;
-    setGame(online.room.game);
     setConfig(online.room.config);
     setSetup(false);
     setPaused(false);
   }, [online.room]);
+  useEffect(() => { online.setAdviceStyle(prefs.assistantStyle); }, [prefs.assistantStyle]);
   useEffect(() => {
     setSelected([]);
     setReplay(null);
@@ -459,9 +476,9 @@ function App() {
       localStorage.setItem(PREF, JSON.stringify(prefs));
     } catch {}
   }, [prefs]);
-  const change = (fn: (g: Game) => void, sfx = "discard", command?: RoomCommand) => {
+  const change = (fn: (g: Game) => void, _sfx = "discard", command?: RoomCommand) => {
     if (online.session) {
-      if (command) void online.send(command).then(ok => { if (ok) { setSelected([]); sound(sfx, prefs.sound); } });
+      if (command) void online.send(command).then(ok => { if (ok) setSelected([]); });
       return;
     }
     if (!game) return;
@@ -471,7 +488,6 @@ function App() {
       setGame(next);
       setNotice("");
       setSelected([]);
-      sound(sfx, prefs.sound);
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
     }
@@ -508,15 +524,6 @@ function App() {
           if (a) act(n, i, a);
           else discard(n, i, advise(v)[0].tile);
         }
-        const last = n.frames.at(-1)?.label ?? "";
-        sound(
-          last.includes("胡") || last.includes("自摸")
-            ? "win"
-            : last.includes("杠")
-              ? "kong"
-              : "discard",
-          prefs.sound,
-        );
         setGame(n);
       } catch (e) {
         setPaused(true);
@@ -546,9 +553,9 @@ function App() {
   const analysis = useMemo(
     () =>
       ready && game && ourTurn && prefs.hints && !replay
-        ? advise(publicView(game, 0))
+        ? online.session ? online.advice : advise(publicView(game, 0), { style: prefs.assistantStyle, difficulty: "advanced" })
         : [],
-    [ready, game, ourTurn, prefs.hints, replay],
+    [ready, game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
   );
   const waiting = useMemo(() => {
     if (
@@ -578,7 +585,7 @@ function App() {
   }, [ready, game, prefs.hints]);
   const playerActions = online.session ? online.room?.actions ?? [] : game ? ownActions(game, 0) : [];
   const claim =
-    online.session ? online.room && !online.room.seats[0].autoplay && !online.busy ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
+    online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
       ? game.pending.actions[0]
       : [];
   const display = game ? (replay ? replay[replayIndex] : snapshot(game)) : null;
@@ -593,6 +600,7 @@ function App() {
       setCreateName(null); setSetup(false); return;
     }
     setConfig(c);
+    setLocalSession(n => n + 1);
     setGame(newGame(c));
     setSetup(false);
     setPaused(false);
@@ -690,8 +698,10 @@ function App() {
                   ? "你已胡牌，观看剩余对局"
                   : `${game.players[game.current].name}正在思考`;
   }
+  if (online.pending) status = `正在提交${online.pending.type === "claim" || online.pending.type === "act" ? actionName(online.pending.action.type) : "操作"}…`;
+  else if (online.room?.game?.pending?.responses[0] && online.room.game.pending.actions[0].length) status = `已选择${actionName(online.room.game.pending.responses[0].type)}，等待其他玩家`;
   return (
-    <div className="app">
+    <div className={`app ${replay ? "is-replay" : ""}`} onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">一</span>
@@ -736,6 +746,21 @@ function App() {
             </h2>
           </div>
           <div className="game-controls">
+            <label>电脑
+              <select aria-label="电脑智能程度" value={game?.config.aiDifficulty ?? config.aiDifficulty ?? "advanced"}
+                disabled={!!online.session && (!online.room?.isHost || online.busy)}
+                onChange={e => { const difficulty = e.target.value as AiDifficulty;
+                  if (online.session) void online.send({ type: "difficulty", difficulty });
+                  else { setConfig({ ...config, aiDifficulty: difficulty }); if (game) setGame({ ...game, config: { ...game.config, aiDifficulty: difficulty } }); }
+                }}>
+                <option value="easy">基础</option><option value="normal">标准</option><option value="advanced">进阶</option>
+              </select>
+            </label>
+            <label>助手
+              <select aria-label="打牌助手风格" value={prefs.assistantStyle} onChange={e => setPrefs({ ...prefs, assistantStyle: e.target.value as PlayStyle })}>
+                <option value="attack">偏进攻</option><option value="balanced">攻守平衡</option><option value="defense">偏防守</option>
+              </select>
+            </label>
             <label>
               <input
                 type="checkbox"
@@ -756,6 +781,12 @@ function App() {
               />
               音效
             </label>
+            <label title={feedback.supported ? "播报已确认的出牌和吃碰杠胡" : "此浏览器不支持语音播报"}>
+              <input type="checkbox" checked={prefs.voice} disabled={!feedback.supported}
+                onChange={e => setPrefs({ ...prefs, voice: e.target.checked })} />
+              语音
+            </label>
+            <button className="voice-preview" disabled={!feedback.supported || !prefs.voice} onClick={feedback.preview}>试听语音</button>
             <button
               onClick={() => setPaused(!paused)}
               disabled={!!online.session || !game || game.phase === "end"}
@@ -774,26 +805,26 @@ function App() {
             </select>
           </div>
         </div>
+        {(feedback.voiceError || !feedback.supported) && <p className="voice-note" role="status">{feedback.voiceError || "此浏览器不支持语音播报；可继续正常打牌。"}</p>}
         <div className="layout">
           <div className="table-column">
             <div className="table">
               <div className="table-topline">
-                <span>
+                <span className="round-badge">
                   第 {display?.round ?? game?.round ?? 1} 局
                   {game?.config.mode === "mcr"
                     ? ` · ${["东", "南", "西", "北"][display?.wind ?? game.wind]}风圈`
                     : ""}
                 </span>
-                <span>
-                  {display?.remaining ?? (config.mode === "sichuan" ? 55 : 83)}{" "}
-                  张余牌
-                </span>
+                <span className="table-state">{replay ? "牌谱回放" : game?.phase === "end" ? "本局结束" : claim.length ? "等待你的响应" : ourTurn ? "轮到你出牌" : "牌局进行中"}</span>
+                <span className="remaining-badge"><strong>{display?.remaining ?? (config.mode === "sichuan" ? 55 : 83)}</strong><span>张余牌</span></span>
               </div>
               {display && game ? (
                 <>
                   <Opponent
                     p={display.players[2]}
                     seat={2}
+                    activity={feedback.activity?.actor === 2 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 2)?.tile}
                     current={display.current === 2 && display.phase !== "end"}
                     dealer={display.dealer === 2}
@@ -802,6 +833,7 @@ function App() {
                   <Opponent
                     p={display.players[3]}
                     seat={3}
+                    activity={feedback.activity?.actor === 3 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 3)?.tile}
                     current={display.current === 3 && display.phase !== "end"}
                     dealer={display.dealer === 3}
@@ -810,6 +842,7 @@ function App() {
                   <Opponent
                     p={display.players[1]}
                     seat={1}
+                    activity={feedback.activity?.actor === 1 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 1)?.tile}
                     current={display.current === 1 && display.phase !== "end"}
                     dealer={display.dealer === 1}
@@ -828,6 +861,7 @@ function App() {
                               key={k}
                               tile={t}
                               small
+                              entering={feedback.activity?.kind === "discard" && feedback.activity.actor === i && k === display.players[i].river.length - 1}
                               selected={
                                 k === display.players[i].river.length - 1 &&
                                 display.lastFrom === i
@@ -838,25 +872,21 @@ function App() {
                       </div>
                     ))}
                     <div className="center-marker">
-                      <span>
-                        {game.config.mode === "sichuan" ? "川" : "国"}
-                      </span>
-                      <p>
-                        {display.phase === "end"
-                          ? "已结算"
-                          : display.lastTile !== undefined
-                            ? tileName(display.lastTile)
-                            : "行牌中"}
-                      </p>
-                      {display.lastTile !== undefined && (
-                        <Tile tile={display.lastTile} />
-                      )}
+                      <span className="mode-seal">{game.config.mode === "sichuan" ? "川" : "国"}</span>
+                      {feedback.activity && <div className={`event-bubble event-${feedback.activity.kind}`} key={`${feedbackStream}:${feedback.activity.id}`}>
+                        <small>{display.players[feedback.activity.actor].name}</small><strong>{eventLabel(feedback.activity)}</strong>
+                      </div>}
+                      <p>{display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}</p>
+                      {(display.lastTile ?? latestDiscard?.tile) !== undefined && <div className="last-discard" key={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}>
+                        <Tile tile={display.lastTile ?? latestDiscard?.tile} />
+                        <b>{tileName((display.lastTile ?? latestDiscard?.tile)!)}</b>
+                      </div>}
                     </div>
                   </div>
-                  <div className="human-zone">
+                  <div className={`human-zone ${feedback.activity?.actor === 0 ? "action-flash" : ""}`}>
                     <div className="human-info">
                       <div>
-                        <strong>你</strong>
+                        <strong>{display.players[0].name}</strong>
                         <span>
                           {display.dealer === 0 ? "庄家 · " : ""}
                           {display.players[0].voidSuit >= 0
@@ -879,6 +909,7 @@ function App() {
                       >
                         {amount(display.players[0].score)}
                         <small> 累计分</small>
+                        <span className="round-delta">本局 {amount(display.players[0].roundDelta)}</span>
                       </b>
                     </div>
                     <Melds p={display.players[0]} reveal={!hideWonHand} />
@@ -921,7 +952,7 @@ function App() {
               <div className="turn-status">
                 <span className={`status-dot ${ourTurn ? "you" : ""}`} />
                 <strong>{paused && !replay ? "对局已暂停" : status}</strong>
-                <span className="muted">{notice || saveWarning}</span>
+                <span className="muted">{online.error || notice || saveWarning}</span>
               </div>
               <div className="actions">
                 {game && !replay && game.phase === "exchange" && (!online.session || (online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy)) && (
@@ -964,7 +995,8 @@ function App() {
                   claim.map((a, k) => (
                     <button
                       className={a.type === "win" ? "primary" : ""}
-                      key={k}
+                      key={`${a.type}:${a.tile}:${a.tiles?.join(",")}`}
+                      disabled={online.busy}
                       onClick={() => change((g) => respond(g, 0, a), a.type, { type: "claim", action: a })}
                     >
                       {a.type === "win"
@@ -978,6 +1010,7 @@ function App() {
                   ))}
                 {!replay && claim.length > 0 && (
                   <button
+                    disabled={online.busy}
                     onClick={() =>
                       change((g) => respond(g, 0, { type: "pass" }), "pass", { type: "claim", action: { type: "pass" } })
                     }
@@ -1157,6 +1190,8 @@ function App() {
               <div className="advice-panel">
                 <span className="eyebrow">A LITTLE CLARITY</span>
                 <h3>{replay ? "先看选择，再看结果。" : "下一张，怎么打？"}</h3>
+                {online.session && prefs.hints && ourTurn && (online.adviceLoading || online.adviceError) &&
+                  <p className="tiny" role="status">{online.adviceError || "后端正在重新计算当前风格的建议…"}</p>}
                 {!prefs.hints ? (
                   <p className="muted">
                     提示已关闭。打开右上方“提示”即可查看向听数与进张建议。
@@ -1290,6 +1325,7 @@ function App() {
                             !rules[n.config?.mode]
                           )
                             throw Error("存档格式不匹配");
+                          setLocalSession(value => value + 1);
                           setGame(n);
                           n.config = { ...defaultConfig, ...n.config };
                           setConfig(n.config);

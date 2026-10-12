@@ -1,34 +1,36 @@
 {
   "project": "quiet-mahjong",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "rootDirectory": "quiet-mahjong",
   "validated": {
-    "tests": 29,
+    "tests": 49,
     "mcrRegressionCases": 214,
     "localCompleteGames": 32,
-    "onlineCompleteGames": 8,
+    "onlineCompleteGames": 14,
     "humanCounts": [
       1,
       2,
       3,
       4
     ],
+    "difficulties": [
+      "easy",
+      "normal",
+      "advanced"
+    ],
     "build": true,
     "realNodeHttp": true,
-    "compiledWorker": true
+    "claimResponseRegression": true,
+    "upgradePatchApplied": true,
+    "browserUiRetested": false,
+    "originalHostedSiteAvailable": false,
+    "voiceQueueMockRegression": true,
+    "confirmedPublicEvents": true,
+    "concealedKongEventPrivacy": true,
+    "seatEventRotation": true,
+    "legacySaveCompatibility": true,
+    "browserVoiceRetested": false
   },
-  "excludes": [
-    ".data",
-    ".git",
-    ".openai",
-    ".sites-checkout",
-    ".sites-runtime",
-    ".vercel",
-    "dist",
-    "node_modules",
-    "site credentials",
-    "actual environment files"
-  ],
   "files": [
     {
       "path": ".env.example",
@@ -67,8 +69,8 @@
     },
     {
       "path": "README.md",
-      "size": 3506,
-      "sha256": "0194509cccdee38c98e0b35c68b0267b4f16f43324c6b52f95697a7ffe9b2773"
+      "size": 5668,
+      "sha256": "f5e15d6b436a0c75cf4461e89459bf0d18a768acf65c2ea8e31ffb89f6eab029"
     },
     {
       "path": "api/analyze.ts",
@@ -96,14 +98,19 @@
       "sha256": "ec16933abe5754974d19cb10e0a6a61223abdb2843b4562aa9982eaf9cbb4fc5"
     },
     {
+      "path": "docs/AI_AND_ASSISTANT.md",
+      "size": 2837,
+      "sha256": "f207d0a2a81c342dd68e444190746604a902a71053f480f9acc040a4e24feb16"
+    },
+    {
       "path": "docs/API.md",
-      "size": 7076,
-      "sha256": "fcf1c8a0568ae05c89e50b1e1997d980b828e13ebc76b8a198e91ebfaf2ef96f"
+      "size": 9517,
+      "sha256": "9bb10e8a587dc2d5de6f31221ab08f4268be3841745fe7b5c6d928df09fa46da"
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "size": 3962,
-      "sha256": "3292fa659c48cf347ee75168da407ebf065f79709bdfc40b42f685ff6464afc0"
+      "size": 4030,
+      "sha256": "fd59b469779f86ab219f4c2fa40e52442bde5f1ae7649fd378d79f830fa2109b"
     },
     {
       "path": "docs/RULES_AND_ENGINE.md",
@@ -111,9 +118,29 @@
       "sha256": "c59bdfbab71551326b6651bce3f609d534606c6296af872e014300bb39a17945"
     },
     {
+      "path": "docs/UPGRADE_2.1.md",
+      "size": 1475,
+      "sha256": "5a244702397adbe569bea61094babdfefd316bf242f9012df12ff0bc0ea4ac4e"
+    },
+    {
+      "path": "docs/UPGRADE_2.2.md",
+      "size": 1936,
+      "sha256": "afce7be9476b83f12fe596b6eaeb0ad9f71c140b46c8a96ce12b877a76ba8edd"
+    },
+    {
       "path": "docs/VALIDATION.md",
-      "size": 2344,
-      "sha256": "a643ccb5ad6c5b522ecc4d2d5a643a5933459efc6d179f4115e1d949dd483550"
+      "size": 2897,
+      "sha256": "a5343ef1d8ecc6ff4e0abb7e3742a478b98f9c226528269714bfc310b29f99eb"
+    },
+    {
+      "path": "docs/upgrade-2.1.patch",
+      "size": 79873,
+      "sha256": "ddc420df873bd9c657855f785019f0683e3fd438a9dfb763ce02b9b40975a2d9"
+    },
+    {
+      "path": "docs/upgrade-2.2.patch",
+      "size": 57284,
+      "sha256": "c8d691cbd7b734ad21cb8fa45b6f6a02138c22dc913ec694667758b33de384aa"
     },
     {
       "path": "examples/analyze-request.json",
@@ -133,12 +160,12 @@
     {
       "path": "package-lock.json",
       "size": 38324,
-      "sha256": "1a80b40a525c9fd4b9e76b40b18f2910857d4661ca288466c354ee704b4a5f28"
+      "sha256": "712cfe474398307db60a4df3a5022101c5da4fae591c98ce65585f93a0560c5a"
     },
     {
       "path": "package.json",
       "size": 801,
-      "sha256": "d1fcf2689a63e52d51c3a5e22f7f407052a2479259f3d8eedbe560024459b77d"
+      "sha256": "3bb2c3466492a20d305617c55bcfd2af4b1760c72b3fe407fbdca3bd10faa914"
     },
     {
       "path": "public/third-party-notices.txt",
@@ -157,8 +184,8 @@
     },
     {
       "path": "server/api.ts",
-      "size": 3071,
-      "sha256": "b40d9e91a86e8741dd11c99476a1ad92724d43bbdbcab309fd031cfcd60d6615"
+      "size": 3258,
+      "sha256": "47082d43834dd6d0db7947fee414cd64f76f65ac3882ffa63203a23c34f26217"
     },
     {
       "path": "server/cors.ts",
@@ -177,8 +204,8 @@
     },
     {
       "path": "server/rooms.ts",
-      "size": 13530,
-      "sha256": "7671a11f0c34af67e69f1cfa1b197e4c1b4de5c7bc826f220ad1e5514a2d6aca"
+      "size": 14617,
+      "sha256": "4829a57543977480097b777790621b484999ecf8287f17b647a80c89c7189094"
     },
     {
       "path": "server/static.ts",
@@ -207,18 +234,18 @@
     },
     {
       "path": "server/validation.ts",
-      "size": 6331,
-      "sha256": "df1653379f7767fee3e06bcd2f9e0720970be962a2a9d462895e67d77d290573"
+      "size": 7171,
+      "sha256": "89d1280d0618ab2323489aadbff3b519ffb64419f62ae2da192197880cfd6d06"
     },
     {
       "path": "src/Tile.tsx",
-      "size": 3931,
-      "sha256": "98a1fdaa587adf59d887cd93e7f3bc1f6eb9cb6b9524bf9f1d17da2c8e532344"
+      "size": 4003,
+      "sha256": "c7b97312e21362aebd58bffe226d0874c4d38f6930050d112ba4db57725ca7f0"
     },
     {
       "path": "src/engine/ai.ts",
-      "size": 8295,
-      "sha256": "b5cbecbdf0097eae09212da1175b14ed9374f98651e694dd6c2a3470b716f1dd"
+      "size": 14832,
+      "sha256": "37e1e025a43d73d410606954ca649deb769b8b9819982506aa3f68110ee45412"
     },
     {
       "path": "src/engine/core.ts",
@@ -227,8 +254,8 @@
     },
     {
       "path": "src/engine/game.ts",
-      "size": 19866,
-      "sha256": "ad9584ef183f632242b24fc1a27ac6fd2d53974a9ebc2e1349cd9069d3acbd5c"
+      "size": 21845,
+      "sha256": "3e422d701d83fd1bcac3a521b3c8ee7019c9c8ad3ada7f33280c0122852ca2e5"
     },
     {
       "path": "src/engine/mcrcore.js",
@@ -242,13 +269,28 @@
     },
     {
       "path": "src/engine/types.ts",
-      "size": 3105,
-      "sha256": "c6e084d719d208559582631c9106608c6ff83ac43d590f36db186c0ae7a04209"
+      "size": 3666,
+      "sha256": "38b34a9189bbc14a263ab3d86ea649dd91c56e9d28cc2a5af589cee4c227133f"
+    },
+    {
+      "path": "src/feedback/events.ts",
+      "size": 1453,
+      "sha256": "95925667f9709d01bbf5144e9b572a302c9677f9b6adcea5271e9e110ccc6ed6"
+    },
+    {
+      "path": "src/feedback/useTableFeedback.ts",
+      "size": 2134,
+      "sha256": "74429dac8565b21b3629b9d2e04a1cc3410cea89cc6fa1d01df5bd7eb328860a"
+    },
+    {
+      "path": "src/feedback/voice.ts",
+      "size": 3205,
+      "sha256": "ee0fc228aab3f1c5a6c3996f873b9e8e607a4adb2e4a8d962064c200a1e97a5b"
     },
     {
       "path": "src/main.tsx",
-      "size": 51822,
-      "sha256": "1dccb899252bd209387158e05df7b0032609518935053940e49197589422e6de"
+      "size": 57326,
+      "sha256": "87162a3b8bd030326d32c1e2374bdb4ef6cadb7e9e9c1cb5a2c4d87fce3e21e5"
     },
     {
       "path": "src/online/RoomPanel.tsx",
@@ -257,18 +299,23 @@
     },
     {
       "path": "src/online/protocol.ts",
-      "size": 780,
-      "sha256": "eb1244c6a8f4a806abab29f6fa22e203727359c2c3a562aba7dd4c5601a16190"
+      "size": 847,
+      "sha256": "52d1916ca873fc7d34b837aab6749c5b32958941408ac6c877f3faf3baf83ba3"
+    },
+    {
+      "path": "src/online/updates.ts",
+      "size": 453,
+      "sha256": "c2148acd8fbbf5bc4ae6707abf24b84a5673ffdd1463887fa8b3daed7f43a41c"
     },
     {
       "path": "src/online/useRoom.ts",
-      "size": 4576,
-      "sha256": "64f7085b272782638fbe9404a54db832491d01459f8330639606696721133193"
+      "size": 7088,
+      "sha256": "ba3c62c9ce1d5429b96bcd6b5c13d8f5b00a9dab83eac8655ce28b94f5ce66d0"
     },
     {
       "path": "src/style.css",
-      "size": 26151,
-      "sha256": "97bfbbac20ba4180512fd805733d851ec8b17db2992e3d6e9a9012035de83922"
+      "size": 37566,
+      "sha256": "508c536a1374e9dafa64dcf9f9a173ed51eb9031006da8d62106c5874d82ff8e"
     },
     {
       "path": "src/vite-env.d.ts",
@@ -276,9 +323,24 @@
       "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
     },
     {
+      "path": "tests/ai.test.ts",
+      "size": 5909,
+      "sha256": "0bf020ddb7bc4ce2f012d12bbe7e76a5cfe060b29aed8ef62bcaa1d6ff901eec"
+    },
+    {
+      "path": "tests/claim-sync.test.ts",
+      "size": 7836,
+      "sha256": "5188e0b633d55acbc3c6a43181376fbb3f32b34942ec9a5024e71b289b32b97f"
+    },
+    {
       "path": "tests/engine.test.ts",
-      "size": 13294,
-      "sha256": "5206f58f63e9ec23d099e7bbb96b2b708c8482a37b6cbfdbcf628f37306afc4a"
+      "size": 13845,
+      "sha256": "e941934d3a7753d14b495cecba69ab858dc7a0ebf681da01b5eb580acdedb14a"
+    },
+    {
+      "path": "tests/feedback.test.ts",
+      "size": 5000,
+      "sha256": "8afa6a0fa6171292f4d173b9d88f330bcc9ec147576a769e8bc07d6686f638b7"
     },
     {
       "path": "tests/mcr-corpus.json",
@@ -287,8 +349,8 @@
     },
     {
       "path": "tests/rooms.test.ts",
-      "size": 10342,
-      "sha256": "4917f4011597cc902f6096aa8ee6885024fa05b57f551b7532eb8c68ae10aef6"
+      "size": 11555,
+      "sha256": "d6b4e41f2d676c1699d7940bd028d37b2425a561046c91c686ab9a2e8439b724"
     },
     {
       "path": "tests/server.test.ts",

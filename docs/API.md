@@ -1,6 +1,6 @@
 # 后端 API · 在线房间
 
-在线模式由服务端管理完整牌局并保存房间，浏览器本地单人模式仍可独立运行。后端同时提供工具算分／建议API和静态网页服务，不调用大模型。Node使用SQLite，托管Worker版使用D1。
+在线模式由服务端管理完整牌局并保存房间，浏览器本地单人模式仍可独立运行。后端同时提供工具算分／建议API和静态网页服务，不调用大模型。Node使用SQLite，原托管Worker实现使用D1。
 
 ## 启动
 
@@ -82,6 +82,7 @@ game不是服务端真实牌局的完整副本：牌墙用-1占位；seed固定�
 command类型（见src/online/protocol.ts）：
 
 - start／next：仅房主；分别在房间尚未开局／本局已结束时执行。
+- difficulty：difficulty为easy／normal／advanced，只有房主可调整；只影响之后的电脑决策。
 - exchange：tiles为三张同花色手牌；每人一次，四家提交完毕才同时交换。
 - void：suit为0万、1筒、2条；四家选择完毕后公开定缺并行牌。
 - discard：tile为牌值；只允许当前座位、合法手牌与定缺约束。
@@ -98,3 +99,22 @@ stage是服务端返回的轮次／阶段／当前玩家／操作帧标识；同
 主要错误：400输入／非法动作、401座位凭据无效、403权限或来源、404房间不存在／闲置过期、409座位满／旧阶段／托管／当前不能开局、413请求过大、429房间容量达到上限。房间请求正文最多16KiB，HTTP适配器最多64KiB。
 
 跨域分离部署需要后端ALLOWED_ORIGINS白名单；同域不需要。Vercel函数只运行前述无状态工具API，房间请求由VITE_ONLINE_API_URL指向Node后端。
+
+
+## 2.1：后端助手与难度
+
+config.aiDifficulty为easy／normal／advanced，默认advanced。/api/analyze另外接收style（attack／balanced／defense）以及可选difficulty，助手默认使用advanced决策。
+
+POST /api/rooms/:id/analyze需要座位Bearer凭据，正文为{stage, style}；返回{stage, style, analysis}。使用服务端该座位的PublicView，不信任客户端提交的其他手牌。此请求是只读的，不修改牌局、难度、操作记录或超时倒计时。前端仅在阶段与风格仍匹配时采用响应。
+
+Advice增加effectiveShanten、offenseScore、defensePenalty、futureQuality、riskFactors；risk是相对风险指标，不是经过校准的放炮概率。历史弃牌discards不同于物理牌河river；publicWinningTiles按实际和牌事件去重。一炮多响只有一张物理和牌，不应按胡牌人数重复扣除剩余张数。
+
+RoomView.game.pending.responses[0]现在保留自己的真实选择；其他座位的选择仍隐藏。客户端提交期间停止自己的轮询并忽略此前启动的轮询响应，按钮保留但禁用，失败消息不会被下一次GET抹掉。服务端对动作类型、牌值、吃牌组合、杠索引进行语义匹配，避免依赖JSON对象字段顺序。
+
+断线托管阈值改为30秒。行牌45秒、换牌／定缺60秒的原计时保留，服务端增加3秒网络缓冲；超过缓冲或已被托管推进的旧操作仍会拒绝，不保证晚到的按钮总能撤销电脑操作。胡优先与国标多人点胡顺序保持原规则，取消吃碰杠时记入牌局日志。
+
+## 2.2公开动作事件
+
+`RoomView.game.events`是本局已确认的公开动作，按时间递增。元素为`{id, actor, kind, tile?, self?}`；`kind`包含`discard/chow/pung/kong/win`。`actor`和其他座位字段一样，已旋转为当前接收者视角（自己为0）。暗杠事件没有`tile`；摸牌不产生公开牌面事件。吃碰杠胡只有规则仲裁后实际成立才写入，抢杠取消的补杠及被胡牌优先取消的碰牌不写入。
+
+前端首次接入、刷新或换房间时从当前事件尾部开始，后续仅消费新的事件ID。`events`在旧存档中可缺省，首次新动作自动创建；不需要数据库表结构迁移。回放使用既有Frame，不触发实时语音。

@@ -1,9 +1,10 @@
-import type { Action, Config, Game } from "../engine/types";
+import type { Action, Config, Game, AiDifficulty } from "../engine/types";
 
 export type RoomCommand =
   | { type: "start" | "next" | "takeback" | "autoplay" | "leave" }
   | { type: "exchange"; tiles: number[] }
   | { type: "void"; suit: number }
+  | { type: "difficulty"; difficulty: AiDifficulty }
   | { type: "discard"; tile: number }
   | { type: "act" | "claim"; action: Action };
 export type RoomView = {

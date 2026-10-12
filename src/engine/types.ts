@@ -1,5 +1,7 @@
 export type Tile = number;
 export type Mode = "sichuan" | "mcr";
+export type AiDifficulty = "easy" | "normal" | "advanced";
+export type PlayStyle = "attack" | "balanced" | "defense";
 export type Meld = {
   kind: "chow" | "pung" | "kong";
   tiles: Tile[];
@@ -23,6 +25,7 @@ export type Config = {
   mode: Mode;
   scoring: boolean;
   mcrEightPointMinimum: boolean;
+  aiDifficulty: AiDifficulty;
   base: number;
   cap: number;
   selfDraw: "base" | "fan";
@@ -32,6 +35,7 @@ export const defaultConfig: Config = {
   mode: "sichuan",
   scoring: true,
   mcrEightPointMinimum: true,
+  aiDifficulty: "advanced",
   base: 1,
   cap: 5,
   selfDraw: "base",
@@ -42,6 +46,7 @@ export type Player = {
   hand: Tile[];
   melds: Meld[];
   river: Tile[];
+  discards?: Tile[];
   voidSuit: number;
   won: boolean;
   score: number;
@@ -83,6 +88,7 @@ export type Payment = {
   refunded?: boolean;
 };
 export type Winner = {
+  eventId?: string;
   player: number;
   from: number;
   tile: Tile;
@@ -113,6 +119,14 @@ export type Frame = {
   lastTile?: Tile;
   lastFrom?: number;
 };
+// Confirmed, public actions only. Concealed kongs never carry a tile.
+export type TableEvent = {
+  id: number;
+  actor: number;
+  kind: "discard" | "chow" | "pung" | "kong" | "win";
+  tile?: Tile;
+  self?: boolean;
+};
 export type Game = {
   version: 3;
   config: Config;
@@ -130,6 +144,7 @@ export type Game = {
   callCount: number;
   pending: Pending | null;
   log: string[];
+  events?: TableEvent[];
   payments: Payment[];
   winners: Winner[];
   frames: Frame[];
@@ -138,6 +153,8 @@ export type Game = {
   previous: Frame[][];
 };
 export type PublicView = {
+  publicWinningTiles?: Tile[];
+  lastDiscard?: { tile: Tile; from: number };
   config: Config;
   self: number;
   hand: Tile[];
@@ -149,6 +166,7 @@ export type PublicView = {
   players: {
     melds: Meld[];
     river: Tile[];
+    discards?: Tile[];
     voidSuit: number;
     won: boolean;
     handCount: number;

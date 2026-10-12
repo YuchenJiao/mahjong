@@ -137,6 +137,7 @@ export function Tile({
   disabled = false,
   onClick,
   drawn = false,
+  entering = false,
 }: {
   tile?: number;
   small?: boolean;
@@ -147,9 +148,10 @@ export function Tile({
   disabled?: boolean;
   onClick?: () => void;
   drawn?: boolean;
+  entering?: boolean;
 }) {
   const label = hidden ? "背面牌" : tile === undefined ? "牌" : tileName(tile);
-  const cls = `tile ${small ? "small" : ""} ${hidden ? "back" : ""} ${selected ? "selected" : ""} ${suggested ? "suggested" : ""} ${dim ? "dim" : ""} ${drawn ? "drawn" : ""}`;
+  const cls = `tile ${small ? "small" : ""} ${hidden ? "back" : ""} ${selected ? "selected" : ""} ${suggested ? "suggested" : ""} ${dim ? "dim" : ""} ${drawn ? "drawn" : ""} ${entering ? "entering" : ""}`;
   const face = hidden ? (
     <span className="back-mark">一</span>
   ) : tile === undefined ? null : (

@@ -1,0 +1,1063 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# 一桌麻将 · 在线版 2.1
++# 一桌麻将 · 在线版 2.2
+ 
+ React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+@@ -26,7 +26,18 @@
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
+ 
+-## 本次算法与操作更新
++## 本次界面、动画和语音更新
++
++- 手牌在大桌面提升至64×90像素，弃牌32×45像素，中央最新牌64×90像素；放大余牌数、累计分、本局分和当前操作提示。
++- 四家继续占用独立网格区域，不覆盖弃牌区；窄屏保留大牌面并支持横向滚动，助手移到牌桌下方。
++- 出牌落位、摸牌入手、吃碰杠胡有动画反馈；系统开启“减少动态效果”时自动关闭动画。
++- 新增独立“语音”开关与“试听语音”。真人和电脑确认出牌后播报牌名，实际成立的吃碰杠胡播报动作。
++- 播报仅使用公开事件，不播报摸牌牌面或暗杠牌面；刷新、反复轮询、回放不重复朗读历史。快速模式队列优先保留动作与胡牌，淘汰过时的弃牌播报。
++- 语音使用浏览器及系统的中文声音，优先本地中文声音；首次点击操作或试听后启用，不使用付费语音服务。实际发音与可用声音取决于设备。
++
++已有2.1仓库可按[2.2升级步骤](docs/UPGRADE_2.2.md)更新；联机的前后端须一起更新，旧存档和SQLite不需要迁移。
++
++## 已有算法与操作更新
+ 
+ - 电脑可选基础、标准、进阶；房主可在牌局中调整，之后的电脑／托管决策生效。
+ - 助手可实时切换偏进攻、攻守平衡、偏防守；联网助手由后端按当前玩家的公开信息视图计算，风格只影响自己的建议。
+@@ -54,7 +65,7 @@
+ 
+ ## 数据与范围
+ 
+-后端使用Node内置SQLite，默认`.data/rooms.sqlite`。持续访问延长房间有效期，无人访问2小时后房间过期。SQLite文件在本地或持久磁盘上可跨进程重启保留；Render免费实例的磁盘是临时的，重启、重新部署或休眠可能丢失房间。原托管版曾使用D1保存房间；本次原Site接口返回项目不存在，2.1更新交付为Node完整源码，需推送自己的仓库并重新部署。
++后端使用Node内置SQLite，默认`.data/rooms.sqlite`。持续访问延长房间有效期，无人访问2小时后房间过期。SQLite文件在本地或持久磁盘上可跨进程重启保留；Render免费实例的磁盘是临时的，重启、重新部署或休眠可能丢失房间。原托管版曾使用D1保存房间；本次原Site接口返回项目不存在，2.2更新交付为Node完整源码，需推送自己的仓库并重新部署。
+ 
+ 这是一套邀请房间型麻将项目，没有账号体系、公开匹配、聊天或排位。单人本地模式不依赖联机服务。
+ 
+diff --git a/docs/API.md b/docs/API.md
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -112,3 +112,9 @@
+ RoomView.game.pending.responses[0]现在保留自己的真实选择；其他座位的选择仍隐藏。客户端提交期间停止自己的轮询并忽略此前启动的轮询响应，按钮保留但禁用，失败消息不会被下一次GET抹掉。服务端对动作类型、牌值、吃牌组合、杠索引进行语义匹配，避免依赖JSON对象字段顺序。
+ 
+ 断线托管阈值改为30秒。行牌45秒、换牌／定缺60秒的原计时保留，服务端增加3秒网络缓冲；超过缓冲或已被托管推进的旧操作仍会拒绝，不保证晚到的按钮总能撤销电脑操作。胡优先与国标多人点胡顺序保持原规则，取消吃碰杠时记入牌局日志。
++
++## 2.2公开动作事件
++
++`RoomView.game.events`是本局已确认的公开动作，按时间递增。元素为`{id, actor, kind, tile?, self?}`；`kind`包含`discard/chow/pung/kong/win`。`actor`和其他座位字段一样，已旋转为当前接收者视角（自己为0）。暗杠事件没有`tile`；摸牌不产生公开牌面事件。吃碰杠胡只有规则仲裁后实际成立才写入，抢杠取消的补杠及被胡牌优先取消的碰牌不写入。
++
++前端首次接入、刷新或换房间时从当前事件尾部开始，后续仅消费新的事件ID。`events`在旧存档中可缺省，首次新动作自动创建；不需要数据库表结构迁移。回放使用既有Frame，不触发实时语音。
+diff --git a/docs/UPGRADE_2.2.md b/docs/UPGRADE_2.2.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.2.md
+@@ -0,0 +1,26 @@
++# 从2.1更新到2.2：大牌面、动画和语音
++
++将下载包中`quiet-mahjong/`的内容合并到你的仓库，保留自己的`.git`、`.env`、`.data`和部署环境变量。不要上传SQLite房间数据或重连凭据。
++
++也可以只取出`docs/upgrade-2.2.patch`，在原始2.1仓库根目录执行：
++
++```bash
++git apply --check docs/upgrade-2.2.patch
++git apply docs/upgrade-2.2.patch
++npm ci
++npm test
++npm run build
++git add .
++git commit -m "Enlarge Mahjong table and add confirmed action voice feedback"
++git push
++```
++
++补丁基于上一版完整2.1交付包；如果本地已有改动导致检查失败，请按差异合并。完整合并源码和应用补丁二选一，不要在已覆盖后的新代码上再应用旧补丁。若仍在2.0版本，可以依次应用2.1、2.2补丁或直接合并最新完整源码。
++
++Render单服务应重新部署整个仓库。前后端分离部署时，两端都更新到2.2，联机语音需要新的公开动作事件字段。前端变量`VITE_ONLINE_API_URL`和后端`ALLOWED_ORIGINS`沿用已有设置。数据库表结构和本地存档版本不变；旧牌局首次新动作自动补齐事件字段，不要删库或清空`.data`。
++
++页面上的“音效”“语音”独立控制，偏好自动保存。默认启用语音，首次点击页面操作或“试听语音”后播放；建议先试听确认设备中文声音。回放保持静音，暗杠只读“杠”，不透露牌面。快速模式积压时优先保留吃碰杠胡，淘汰过时弃牌播报。
++
++手机横屏保留46×66像素手牌，空间不足可横向滚动牌桌；页面可以纵向滚动。系统启用“减少动态效果”时自动停用动画。
++
++本次交付更新源码与补丁，未连接或修改你自行创建的GitHub、Render、Vercel或Pages账户；推送到自己的仓库并重新部署后生效。浏览器实际发音、设备声音可用性和手机视觉效果尚未实机复测。
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,11 +1,11 @@
+-# 交付验证记录 · 2.1.0
++# 交付验证记录 · 2.2.0
+ 
+ 日期：2026-10-12。
+ 
+ | 检查 | 结果 |
+ |---|---|
+ | TypeScript前后端检查、Vite生产构建 | 通过 |
+-| 全部自动测试 | 41项通过，0失败 |
++| 全部自动测试 | 49项通过，0失败 |
+ | 国标算番回归 | 214个用例通过 |
+ | 本地完整对局 | 原32局均结束，收支零和 |
+ | 1–4人房间 | 川麻／国标各1、2、3、4个独立会话，共8局完成并续局 |
+@@ -18,12 +18,16 @@
+ | 优先级与超时 | 他家胡牌取消碰牌有明确记录；3秒缓冲内接受当前阶段点击，旧阶段拒绝 |
+ | 前端响应顺序 | 提交前启动的旧轮询，不能覆盖提交后确认的数据，即使它晚到或带更高版本 |
+ | 个人助手接口 | 只读调用改变风格，不修改牌局、阶段、房间难度或倒计时 |
+-| 实际Node HTTP | 后端三种难度、个人进攻／防守建议、仅自己的合法牌值、健康与生产资源通过 |
++| 公开动作事件 | 成立后才产生；他家胡牌取消的碰和被抢杠取消的补杠均不产生事件 |
++| 事件隐私及座位 | 暗杠事件不包含牌面，接收者视角正确旋转；旧存档首次动作自动初始化 |
++| 语音控制器 | 模拟浏览器声音接口验证中文牌名、中文声音选择、多响顺序、短队列、静音清理、异常降级 |
++| 播报去重 | 首次连接不读历史，重复与迟到轮询不重复读，房间切换、回放不补播 |
++| 实际Node HTTP | 本版健康2.2.0、公开出牌事件、来客座位旋转、对手手牌隐藏、生产HTML通过；既有难度与助手行为另由完整回归覆盖 |
+ 
+ ## 边界
+ 
+-浏览器点击和手机横屏视觉复测尚未完成；接口回归、前端更新顺序模块测试和生产构建不等于完整浏览器测试。
++浏览器点击、设备扬声器试听和手机横屏视觉复测尚未完成；接口回归、模拟语音接口测试和生产构建不等于真实浏览器测试。尺寸与网格约束已在源码中落实，但尚未截图核验。中文声音是否可用和具体发音取决于浏览器及系统；首次交互或试听后启用。窄屏允许横向和纵向滚动，没有通过缩小牌面强行塞入一屏。
+ 
+ 对手听牌与风险是公开信息上的启发式估计，不是统计校准概率；具体牌例改善不等于已证明总体胜率提升。
+ 
+-原Site接口返回“项目不存在”，没有发布到旧网址。也没有登录或修改用户自己创建的GitHub、Render、Vercel、Pages账户。本次交付完整源码与从原2.0包升级的补丁，部署需由自己的仓库发布。
++原Site接口返回“项目不存在”，没有发布到旧网址。也没有登录或修改用户自己创建的GitHub、Render、Vercel、Pages账户。本次交付完整源码与从原2.0、2.1包升级的补丁，部署需由自己的仓库发布。
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.1.0",
++  "version": "2.2.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.1.0",
++      "version": "2.2.0",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.1.0",
++  "version": "2.2.0",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -40,7 +40,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.1.0",
++      version: "2.2.0",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+diff --git a/server/rooms.ts b/server/rooms.ts
+--- a/server/rooms.ts
++++ b/server/rooms.ts
+@@ -132,6 +132,7 @@
+     safe = {
+       ...clone(g), seed: 0, wall: Array(g.wall.length).fill(-1),
+       current: at(g.current), dealer: at(g.dealer),
++      events: (g.events ?? []).map(e => ({ ...e, actor: at(e.actor) })),
+       drawnTile: g.current === self || reveal ? g.drawnTile : null,
+       players: order.map(i => {
+         const p = g.players[i], w = g.winners.find(w => w.player === i), winning = p.hand.lastIndexOf(w?.tile ?? -1);
+diff --git a/src/Tile.tsx b/src/Tile.tsx
+--- a/src/Tile.tsx
++++ b/src/Tile.tsx
+@@ -137,6 +137,7 @@
+   disabled = false,
+   onClick,
+   drawn = false,
++  entering = false,
+ }: {
+   tile?: number;
+   small?: boolean;
+@@ -147,9 +148,10 @@
+   disabled?: boolean;
+   onClick?: () => void;
+   drawn?: boolean;
++  entering?: boolean;
+ }) {
+   const label = hidden ? "背面牌" : tile === undefined ? "牌" : tileName(tile);
+-  const cls = `tile ${small ? "small" : ""} ${hidden ? "back" : ""} ${selected ? "selected" : ""} ${suggested ? "suggested" : ""} ${dim ? "dim" : ""} ${drawn ? "drawn" : ""}`;
++  const cls = `tile ${small ? "small" : ""} ${hidden ? "back" : ""} ${selected ? "selected" : ""} ${suggested ? "suggested" : ""} ${dim ? "dim" : ""} ${drawn ? "drawn" : ""} ${entering ? "entering" : ""}`;
+   const face = hidden ? (
+     <span className="back-mark">一</span>
+   ) : tile === undefined ? null : (
+diff --git a/src/engine/game.ts b/src/engine/game.ts
+--- a/src/engine/game.ts
++++ b/src/engine/game.ts
+@@ -12,10 +12,15 @@
+   WinScore,
+   PublicView,
+   Frame,
++  TableEvent,
+ } from "./types";
+ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+ function log(g: Game, s: string) {
+   g.log.push(s);
++}
++function emit(g: Game, event: Omit<TableEvent, "id">) {
++  g.events ??= [];
++  g.events.push({ ...event, id: g.events.length + 1 });
+ }
+ function frame(g: Game, label: string) {
+   g.frames.push({
+@@ -81,6 +86,7 @@
+     callCount: 0,
+     pending: null,
+     log: [],
++    events: [],
+     payments: [],
+     winners: [],
+     frames: [],
+@@ -317,6 +323,7 @@
+   p.discards.push(t);
+   g.discardCount++;
+   log(g, `${p.name}打出${tileName(t)}`);
++  emit(g, { actor: i, kind: "discard", tile: t });
+   setPending(g, t, i);
+   g.drawnTile = null;
+   frame(g, `${p.name} · 打${tileName(t)}`);
+@@ -363,6 +370,7 @@
+   if (!self) p.hand.push(t);
+   sortHand(p.hand);
+   g.winners.push({ eventId: `${g.round}:${g.discardCount}:${self ? "self" + i : from}:${t}`, player: i, from, tile: t, self, score: sc, received });
++  emit(g, { actor: i, kind: "win", tile: t, self });
+   log(
+     g,
+     `${p.name}${self ? "自摸" : "胡牌"} · ${g.config.scoring ? `${sc.fan}${g.config.mode === "mcr" ? "分" : "番"}` : "固定分"} · 收入${received}`,
+@@ -423,6 +431,7 @@
+   g.callCount++;
+   if (g.config.mode === "sichuan") kongPayment(g, from, m.from, false, true);
+   log(g, `${p.name}补杠${tileName(t)}`);
++  emit(g, { actor: from, kind: "kong", tile: t });
+   frame(g, `${p.name} · 补杠${tileName(t)}`);
+   draw(g, from, true);
+ }
+@@ -498,6 +507,7 @@
+     g.pending = null;
+     g.drawnTile = null;
+     g.kongDraw = false;
++    emit(g, { actor: caller, kind: a.type as "chow" | "pung" | "kong", tile: q.tile });
+     log(
+       g,
+       `${p.name}${a.type === "chow" ? "吃" : a.type === "kong" ? "杠" : "碰"}${tileName(q.tile)}`,
+@@ -537,6 +547,7 @@
+     g.callCount++;
+     if (g.config.mode === "sichuan") kongPayment(g, i, i, true, false);
+     log(g, `${p.name}暗杠`);
++    emit(g, { actor: i, kind: "kong" });
+     frame(g, `${p.name} · 暗杠`);
+     draw(g, i, true);
+   } else if (a.type === "addedKong") {
+diff --git a/src/engine/types.ts b/src/engine/types.ts
+--- a/src/engine/types.ts
++++ b/src/engine/types.ts
+@@ -119,6 +119,14 @@
+   lastTile?: Tile;
+   lastFrom?: number;
+ };
++// Confirmed, public actions only. Concealed kongs never carry a tile.
++export type TableEvent = {
++  id: number;
++  actor: number;
++  kind: "discard" | "chow" | "pung" | "kong" | "win";
++  tile?: Tile;
++  self?: boolean;
++};
+ export type Game = {
+   version: 3;
+   config: Config;
+@@ -136,6 +144,7 @@
+   callCount: number;
+   pending: Pending | null;
+   log: string[];
++  events?: TableEvent[];
+   payments: Payment[];
+   winners: Winner[];
+   frames: Frame[];
+diff --git a/src/feedback/events.ts b/src/feedback/events.ts
+new file mode 100644
+--- /dev/null
++++ b/src/feedback/events.ts
+@@ -0,0 +1,29 @@
++import type { TableEvent } from "../engine/types";
++import { tileName } from "../engine/core";
++
++export const eventLabel = (event: TableEvent) => ({ discard: "出牌", chow: "吃", pung: "碰", kong: "杠", win: event.self ? "自摸" : "胡" })[event.kind];
++export function eventSpeech(event: TableEvent): string {
++  if (event.kind !== "discard") return event.kind === "win" && event.self ? "自摸，胡" : eventLabel(event);
++  if (event.tile === undefined || event.tile < 0 || event.tile > 33) return "";
++  const name = tileName(event.tile).replace(/[1-9]/g, n => "一二三四五六七八九"[Number(n) - 1]);
++  return ({ 东: "东风", 南: "南风", 西: "西风", 北: "北风", 中: "红中", 发: "发财", 白: "白板" } as Record<string, string>)[name] ?? name;
++}
++
++// Start at the live edge on mount/room change. Refresh, replay and repeated polls
++// must not announce the history. IDs also survive a batched HTTP update.
++export class EventCursor {
++  private stream: string | undefined;
++  private last = 0;
++  read(stream: string, events: readonly TableEvent[], silent = false): TableEvent[] {
++    const newest = events.at(-1)?.id ?? 0;
++    if (this.stream !== stream) {
++      this.stream = stream;
++      this.last = newest;
++      return [];
++    }
++    if (newest < this.last) return []; // Late polls cannot rewind the cursor.
++    const fresh = events.filter(e => e.id > this.last);
++    this.last = newest;
++    return silent ? [] : fresh;
++  }
++}
+diff --git a/src/feedback/useTableFeedback.ts b/src/feedback/useTableFeedback.ts
+new file mode 100644
+--- /dev/null
++++ b/src/feedback/useTableFeedback.ts
+@@ -0,0 +1,41 @@
++import { useEffect, useRef, useState } from "react";
++import type { Game, TableEvent } from "../engine/types";
++import { EventCursor } from "./events";
++import { browserSpeech, VoiceAnnouncer } from "./voice";
++
++export function useTableFeedback(game: Game | null, stream: string, replay: boolean,
++  voiceEnabled: boolean, soundEnabled: boolean, sound: (kind: string, enabled: boolean) => void) {
++  const cursor = useRef(new EventCursor());
++  const unlocked = useRef(false);
++  const [voiceError, setVoiceError] = useState("");
++  const speaker = useRef<VoiceAnnouncer | null>(null);
++  if (!speaker.current) speaker.current = new VoiceAnnouncer(browserSpeech(), () => setVoiceError("语音未能播放，请点试听或检查系统中文声音"));
++  const [activity, setActivity] = useState<TableEvent | null>(null);
++  useEffect(() => {
++    const fresh = cursor.current.read(stream, game?.events ?? [], replay);
++    if (!fresh.length) return;
++    setActivity(fresh.at(-1)!);
++    fresh.forEach(e => {
++      sound(e.kind, soundEnabled);
++      if (voiceEnabled && unlocked.current && document.visibilityState !== "hidden") speaker.current!.announce(e);
++    });
++  }, [game, stream, replay, voiceEnabled, soundEnabled, sound]);
++  useEffect(() => {
++    setActivity(null);
++    speaker.current!.stop();
++  }, [stream]);
++  useEffect(() => {
++    if (!activity) return;
++    const timer = setTimeout(() => setActivity(null), activity.kind === "win" ? 2600 : 1800);
++    return () => clearTimeout(timer);
++  }, [activity]);
++  useEffect(() => { if (!voiceEnabled || replay) speaker.current!.stop(); }, [voiceEnabled, replay]);
++  useEffect(() => {
++    const hide = () => { if (document.visibilityState === "hidden") speaker.current!.stop(); };
++    document.addEventListener("visibilitychange", hide);
++    return () => { document.removeEventListener("visibilitychange", hide); speaker.current!.stop(); };
++  }, []);
++  return { activity: replay ? null : activity, voiceError, supported: speaker.current.supported,
++    unlock: () => { unlocked.current = true; },
++    preview: () => { unlocked.current = true; setVoiceError(""); speaker.current!.preview(); } };
++}
+diff --git a/src/feedback/voice.ts b/src/feedback/voice.ts
+new file mode 100644
+--- /dev/null
++++ b/src/feedback/voice.ts
+@@ -0,0 +1,73 @@
++import type { TableEvent } from "../engine/types";
++import { eventSpeech } from "./events";
++
++export type SpeechPlatform = {
++  synth: Pick<SpeechSynthesis, "speak" | "cancel" | "resume" | "getVoices">;
++  utterance: (text: string) => SpeechSynthesisUtterance;
++};
++export function browserSpeech(): SpeechPlatform | null {
++  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return null;
++  return { synth: window.speechSynthesis, utterance: text => new SpeechSynthesisUtterance(text) };
++}
++export function chineseVoice(voices: readonly SpeechSynthesisVoice[]) {
++  return [...voices].filter(v => /^zh(?:[-_]|$)/i.test(v.lang))
++    .sort((a, b) => Number(b.localService) - Number(a.localService) || Number(/^zh[-_]CN$/i.test(b.lang)) - Number(/^zh[-_]CN$/i.test(a.lang)))[0];
++}
++
++// Use our own short queue so fast CPUs cannot create minutes of stale speech.
++// Under load discard chatter yields to confirmed calls and wins.
++export class VoiceAnnouncer {
++  private queue: { text: string; kind: TableEvent["kind"] | "preview" }[] = [];
++  private active = false;
++  private generation = 0;
++  private timer: ReturnType<typeof setTimeout> | undefined;
++  constructor(private platform: SpeechPlatform | null, private onError: () => void = () => {}) {}
++  get supported() { return !!this.platform; }
++  announce(event: TableEvent) {
++    const text = eventSpeech(event);
++    if (text) this.enqueue(text, event.kind);
++  }
++  preview() { this.stop(); this.enqueue("一万，九筒，三条，吃，碰，杠，胡", "preview"); }
++  private enqueue(text: string, kind: TableEvent["kind"] | "preview") {
++    if (!this.platform) return;
++    if (this.queue.length >= 8) {
++      const disposable = this.queue.findIndex(e => e.kind === "discard");
++      if (disposable < 0 && kind === "discard") return;
++      this.queue.splice(disposable < 0 ? 0 : disposable, 1);
++    }
++    this.queue.push({ text, kind });
++    this.pump();
++  }
++  private pump() {
++    if (this.active || !this.platform || !this.queue.length) return;
++    const item = this.queue.shift()!, ticket = ++this.generation;
++    this.active = true;
++    try {
++      const { synth, utterance } = this.platform, u = utterance(item.text);
++      u.lang = "zh-CN"; u.rate = 1.18; u.volume = 0.85;
++      const voice = chineseVoice(synth.getVoices());
++      if (voice) u.voice = voice;
++      const finish = () => {
++        if (this.generation !== ticket) return;
++        ++this.generation;
++        clearTimeout(this.timer);
++        this.active = false;
++        this.pump();
++      };
++      u.onend = finish;
++      u.onerror = () => { if (this.generation === ticket) { this.onError(); this.stop(); } };
++      // A broken platform callback must not stall future speech forever.
++      this.timer = setTimeout(() => {
++        if (this.generation !== ticket) return;
++        this.stop(); this.onError();
++      }, item.kind === "preview" ? 10000 : 5000);
++      synth.resume(); synth.speak(u);
++    } catch { this.stop(); this.onError(); }
++  }
++  stop() {
++    ++this.generation;
++    clearTimeout(this.timer);
++    this.queue = []; this.active = false;
++    try { this.platform?.synth.cancel(); } catch { /* Optional audio. */ }
++  }
++}
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -27,6 +27,8 @@
+ import { BONUS, defaultConfig } from "./engine/types";
+ import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
+ import { Tile } from "./Tile";
++import { useTableFeedback } from "./feedback/useTableFeedback";
++import { eventLabel } from "./feedback/events";
+ import "./style.css";
+ import { useRoom } from "./online/useRoom";
+ import { RoomPanel } from "./online/RoomPanel";
+@@ -49,7 +51,7 @@
+   if (!enabled) return;
+   try {
+     audio ??= new AudioContext();
+-    void audio.resume();
++    void audio.resume().catch(() => {});
+     const notes =
+       kind === "win"
+         ? [440, 554, 659]
+@@ -111,6 +113,7 @@
+   dealer,
+   reveal = false,
+   winningTile,
++  activity,
+ }: {
+   p: Player;
+   seat: number;
+@@ -118,12 +121,13 @@
+   dealer: boolean;
+   reveal?: boolean;
+   winningTile?: number;
++  activity?: string;
+ }) {
+   // Only one copy of the winning tile is public before the round ends.
+   const winningIndex = p.won ? p.hand.lastIndexOf(winningTile ?? -1) : -1;
+   return (
+     <section
+-      className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""}`}
++      className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""} ${activity ? "action-flash" : ""}`}
+     >
+       <div className="player-meta">
+         <span className="avatar">{p.name[0]}</span>
+@@ -146,6 +150,7 @@
+           {amount(p.score)}
+         </b>
+       </div>
++      <span className="player-action" aria-hidden={!activity}>{activity ?? ""}</span>
+       <div className="opponent-hand">
+         {p.hand.map((t, k) => (
+           <Tile key={k} tile={t} small hidden={!reveal && k !== winningIndex} />
+@@ -419,14 +424,15 @@
+     [failure, setFailure] = useState(""),
+     [localGame, setGame] = useState<Game | null>(validInitial);
+   const game = online.session ? online.room?.game ?? null : localGame;
++  const [localSession, setLocalSession] = useState(0);
+   const [config, setConfig] = useState<Config>(
+       validInitial?.config ?? defaultConfig,
+     ),
+     [setup, setSetup] = useState(!validInitial && !online.session && !new URL(location.href).searchParams.has("room"));
+   const [selected, setSelected] = useState<number[]>([]),
+     [prefs, setPrefs] = useState(
+-      { hints: true, sound: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
+-        ...stored<Partial<{ hints: boolean; sound: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
++      { hints: true, sound: true, voice: true, speed: 650, assistantStyle: "balanced" as PlayStyle,
++        ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
+     );
+   const [paused, setPaused] = useState(false),
+     [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
+@@ -435,6 +441,9 @@
+     [replayPlay, setReplayPlay] = useState(false),
+     [notice, setNotice] = useState(""),
+     [saveWarning, setSaveWarning] = useState("");
++  const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
++  const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound);
++  const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
+   useEffect(() => {
+     initCore()
+       .then(() => setReady(true))
+@@ -467,9 +476,9 @@
+       localStorage.setItem(PREF, JSON.stringify(prefs));
+     } catch {}
+   }, [prefs]);
+-  const change = (fn: (g: Game) => void, sfx = "discard", command?: RoomCommand) => {
++  const change = (fn: (g: Game) => void, _sfx = "discard", command?: RoomCommand) => {
+     if (online.session) {
+-      if (command) void online.send(command).then(ok => { if (ok) { setSelected([]); sound(sfx, prefs.sound); } });
++      if (command) void online.send(command).then(ok => { if (ok) setSelected([]); });
+       return;
+     }
+     if (!game) return;
+@@ -479,7 +488,6 @@
+       setGame(next);
+       setNotice("");
+       setSelected([]);
+-      sound(sfx, prefs.sound);
+     } catch (e) {
+       setNotice(e instanceof Error ? e.message : String(e));
+     }
+@@ -516,15 +524,6 @@
+           if (a) act(n, i, a);
+           else discard(n, i, advise(v)[0].tile);
+         }
+-        const last = n.frames.at(-1)?.label ?? "";
+-        sound(
+-          last.includes("胡") || last.includes("自摸")
+-            ? "win"
+-            : last.includes("杠")
+-              ? "kong"
+-              : "discard",
+-          prefs.sound,
+-        );
+         setGame(n);
+       } catch (e) {
+         setPaused(true);
+@@ -601,6 +600,7 @@
+       setCreateName(null); setSetup(false); return;
+     }
+     setConfig(c);
++    setLocalSession(n => n + 1);
+     setGame(newGame(c));
+     setSetup(false);
+     setPaused(false);
+@@ -701,7 +701,7 @@
+   if (online.pending) status = `正在提交${online.pending.type === "claim" || online.pending.type === "act" ? actionName(online.pending.action.type) : "操作"}…`;
+   else if (online.room?.game?.pending?.responses[0] && online.room.game.pending.actions[0].length) status = `已选择${actionName(online.room.game.pending.responses[0].type)}，等待其他玩家`;
+   return (
+-    <div className="app">
++    <div className={`app ${replay ? "is-replay" : ""}`} onPointerDownCapture={feedback.unlock} onKeyDownCapture={feedback.unlock}>
+       <header className="topbar">
+         <div className="brand">
+           <span className="brand-mark">一</span>
+@@ -781,6 +781,12 @@
+               />
+               音效
+             </label>
++            <label title={feedback.supported ? "播报已确认的出牌和吃碰杠胡" : "此浏览器不支持语音播报"}>
++              <input type="checkbox" checked={prefs.voice} disabled={!feedback.supported}
++                onChange={e => setPrefs({ ...prefs, voice: e.target.checked })} />
++              语音
++            </label>
++            <button className="voice-preview" disabled={!feedback.supported || !prefs.voice} onClick={feedback.preview}>试听语音</button>
+             <button
+               onClick={() => setPaused(!paused)}
+               disabled={!!online.session || !game || game.phase === "end"}
+@@ -799,26 +805,26 @@
+             </select>
+           </div>
+         </div>
++        {(feedback.voiceError || !feedback.supported) && <p className="voice-note" role="status">{feedback.voiceError || "此浏览器不支持语音播报；可继续正常打牌。"}</p>}
+         <div className="layout">
+           <div className="table-column">
+             <div className="table">
+               <div className="table-topline">
+-                <span>
++                <span className="round-badge">
+                   第 {display?.round ?? game?.round ?? 1} 局
+                   {game?.config.mode === "mcr"
+                     ? ` · ${["东", "南", "西", "北"][display?.wind ?? game.wind]}风圈`
+                     : ""}
+                 </span>
+-                <span>
+-                  {display?.remaining ?? (config.mode === "sichuan" ? 55 : 83)}{" "}
+-                  张余牌
+-                </span>
++                <span className="table-state">{replay ? "牌谱回放" : game?.phase === "end" ? "本局结束" : claim.length ? "等待你的响应" : ourTurn ? "轮到你出牌" : "牌局进行中"}</span>
++                <span className="remaining-badge"><strong>{display?.remaining ?? (config.mode === "sichuan" ? 55 : 83)}</strong><span>张余牌</span></span>
+               </div>
+               {display && game ? (
+                 <>
+                   <Opponent
+                     p={display.players[2]}
+                     seat={2}
++                    activity={feedback.activity?.actor === 2 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 2)?.tile}
+                     current={display.current === 2 && display.phase !== "end"}
+                     dealer={display.dealer === 2}
+@@ -827,6 +833,7 @@
+                   <Opponent
+                     p={display.players[3]}
+                     seat={3}
++                    activity={feedback.activity?.actor === 3 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 3)?.tile}
+                     current={display.current === 3 && display.phase !== "end"}
+                     dealer={display.dealer === 3}
+@@ -835,6 +842,7 @@
+                   <Opponent
+                     p={display.players[1]}
+                     seat={1}
++                    activity={feedback.activity?.actor === 1 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 1)?.tile}
+                     current={display.current === 1 && display.phase !== "end"}
+                     dealer={display.dealer === 1}
+@@ -853,6 +861,7 @@
+                               key={k}
+                               tile={t}
+                               small
++                              entering={feedback.activity?.kind === "discard" && feedback.activity.actor === i && k === display.players[i].river.length - 1}
+                               selected={
+                                 k === display.players[i].river.length - 1 &&
+                                 display.lastFrom === i
+@@ -863,25 +872,21 @@
+                       </div>
+                     ))}
+                     <div className="center-marker">
+-                      <span>
+-                        {game.config.mode === "sichuan" ? "川" : "国"}
+-                      </span>
+-                      <p>
+-                        {display.phase === "end"
+-                          ? "已结算"
+-                          : display.lastTile !== undefined
+-                            ? tileName(display.lastTile)
+-                            : "行牌中"}
+-                      </p>
+-                      {display.lastTile !== undefined && (
+-                        <Tile tile={display.lastTile} />
+-                      )}
++                      <span className="mode-seal">{game.config.mode === "sichuan" ? "川" : "国"}</span>
++                      {feedback.activity && <div className={`event-bubble event-${feedback.activity.kind}`} key={`${feedbackStream}:${feedback.activity.id}`}>
++                        <small>{display.players[feedback.activity.actor].name}</small><strong>{eventLabel(feedback.activity)}</strong>
++                      </div>}
++                      <p>{display.phase === "end" ? "本局已结束" : display.lastTile !== undefined ? "当前出牌" : latestDiscard ? "上一张出牌" : "等待出牌"}</p>
++                      {(display.lastTile ?? latestDiscard?.tile) !== undefined && <div className="last-discard" key={replay ? `replay:${replayIndex}` : `${feedbackStream}:${latestDiscard?.id ?? 0}`}>
++                        <Tile tile={display.lastTile ?? latestDiscard?.tile} />
++                        <b>{tileName((display.lastTile ?? latestDiscard?.tile)!)}</b>
++                      </div>}
+                     </div>
+                   </div>
+-                  <div className="human-zone">
++                  <div className={`human-zone ${feedback.activity?.actor === 0 ? "action-flash" : ""}`}>
+                     <div className="human-info">
+                       <div>
+-                        <strong>你</strong>
++                        <strong>{display.players[0].name}</strong>
+                         <span>
+                           {display.dealer === 0 ? "庄家 · " : ""}
+                           {display.players[0].voidSuit >= 0
+@@ -904,6 +909,7 @@
+                       >
+                         {amount(display.players[0].score)}
+                         <small> 累计分</small>
++                        <span className="round-delta">本局 {amount(display.players[0].roundDelta)}</span>
+                       </b>
+                     </div>
+                     <Melds p={display.players[0]} reveal={!hideWonHand} />
+@@ -1319,6 +1325,7 @@
+                             !rules[n.config?.mode]
+                           )
+                             throw Error("存档格式不匹配");
++                          setLocalSession(value => value + 1);
+                           setGame(n);
+                           n.config = { ...defaultConfig, ...n.config };
+                           setConfig(n.config);
+diff --git a/src/style.css b/src/style.css
+--- a/src/style.css
++++ b/src/style.css
+@@ -1535,3 +1535,181 @@
+     padding-top: 15px;
+   }
+ }
++/* Large, readable table. These tokens supersede the compact legacy sizes. */
++:root {
++  --tile-w: 56px;
++  --tile-h: 80px;
++  --small-w: 30px;
++  --small-h: 43px;
++  --muted: #617369;
++}
++.app main { max-width: 1600px; }
++.game-heading { gap: 20px; flex-wrap: wrap; }
++.game-heading h2 { font-size: 30px; }
++.game-controls { max-width: 860px; gap: 12px; font-size: 14px; }
++.game-controls select, .game-controls button { min-height: 40px; padding: 8px 12px; font-size: inherit; }
++.game-controls input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
++.voice-preview { color: var(--green); }
++.voice-note { color: #87651d; font-size: 14px; margin: -4px 0 16px; }
++.layout { grid-template-columns: minmax(0, 1fr) 310px; }
++.table {
++  --rail-width: 156px;
++  min-width: 920px;
++  min-height: 730px;
++  padding: 20px;
++  gap: 18px 14px;
++  grid-template-rows: auto auto minmax(340px, auto) auto;
++  background: #e4eddf;
++  border-radius: 22px;
++  box-shadow: 0 8px 28px #2943330d;
++}
++.table-topline { gap: 12px; align-items: center; color: #3d5b4b; font-size: 15px; }
++.round-badge { font-weight: 650; }
++.table-state { border-radius: 30px; padding: 8px 14px; background: #fffdf5b5; font-size: 14px; text-align: center; }
++.remaining-badge { display: flex; align-items: baseline; gap: 7px; white-space: nowrap; }
++.remaining-badge strong { font-size: 32px; color: #214f42; font-variant-numeric: tabular-nums; }
++.remaining-badge span { font-size: 13px; }
++.opponent { padding: 12px 10px; background: #f6f9ee80; border-radius: 12px; transition: background-color .2s, border-color .2s; }
++.opponent.current { background: #f9fcf1; border: 2px solid #739674; padding: 11px 9px; box-shadow: 0 3px 12px #29433312; }
++.seat-2 { max-width: 540px; }
++.avatar { width: 34px; height: 34px; font-size: 16px; }
++.player-meta { gap: 8px; }
++.player-meta strong { font-size: 15px; overflow-wrap: anywhere; }
++.player-meta div > span { font-size: 12px; color: #52684d; }
++.player-meta > b { font-size: 18px; font-variant-numeric: tabular-nums; }
++.opponent-hand { gap: 3px; }
++.tile { --face-w: var(--tile-w); --face-h: var(--tile-h); width: var(--face-w); height: var(--face-h); flex-basis: var(--face-w); border-radius: 7px; padding: 4px 3px 11px; }
++.tile.small { --face-w: var(--small-w); --face-h: var(--small-h); width: var(--face-w); height: var(--face-h); flex-basis: var(--face-w); border-radius: 4px; padding: 2px 1px 7px; }
++.opponent-hand .tile.small, .opponent .meld .tile.small, .human-zone .meld .tile.small, .river-tiles .tile.small {
++  width: var(--small-w); height: var(--small-h); flex-basis: var(--small-w);
++}
++.opponent { --small-w: 28px; --small-h: 40px; }
++.opponent .meld { --small-w: 25px; --small-h: 36px; }
++.human-zone .meld { --small-w: 35px; --small-h: 50px; }
++.tile .characters b { font-size: calc(var(--face-w) * .52); }
++.tile .characters em { font-size: calc(var(--face-w) * .43); margin-top: 2px; }
++.tile .honor { font-size: calc(var(--face-w) * .69); }
++.tile .honor.h33 { width: calc(var(--face-w) * .52); height: calc(var(--face-h) * .54); font-size: 0; border-width: 2px; }
++.tile-caption { font-size: 9px; bottom: 2px; right: 3px; color: #66745d; }
++.tile.small .tile-caption { font-size: 6px; bottom: 1px; }
++.tile.back .back-mark { font-size: calc(var(--face-w) * .48); }
++.tile:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #427dc5; outline-offset: 3px; }
++.human-hand .tile.selected { transform: translateY(-12px); background: #fff3c8; box-shadow: 0 0 0 3px #c89533, 0 8px 18px #544e241a; }
++.human-hand .tile:hover:not(:disabled):not(.selected) { transform: translateY(-6px); }
++.tile.suggested:after { width: 7px; height: 7px; top: -7px; }
++.tile.drawn { margin-left: 14px; }
++.river-area { grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); grid-template-rows: minmax(165px, auto) minmax(165px, auto); gap: 18px 14px; }
++.river-label { color: #536b4b; font-size: 13px; font-weight: 600; margin-bottom: 9px; }
++.river-label span { font-weight: 400; opacity: 1; }
++.river-tiles { gap: 4px; }
++.river { --small-w: 32px; --small-h: 45px; }
++.river .tile.selected { background: #fff0b9; box-shadow: 0 0 0 2px #c89533; }
++.center-marker { width: 96px; min-width: 0; color: #496841; }
++.center-marker > .mode-seal { font: 22px serif; opacity: .65; }
++.center-marker > p { font-size: 12px; margin: 10px 0; }
++.center-marker .tile { --face-w: 64px; --face-h: 90px; width: var(--face-w); height: var(--face-h); box-shadow: 0 5px 15px #30462920; }
++.last-discard > b { display: block; font-size: 16px; margin-top: 8px; color: #274c39; }
++.event-bubble { padding: 10px 6px; margin: 10px 0; border-radius: 14px; background: #224f40; color: #fffdf4; box-shadow: 0 4px 12px #214f4220; }
++.event-bubble small { display: block; font-size: 11px; overflow-wrap: anywhere; }
++.event-bubble strong { display: block; font-size: 26px; line-height: 1.2; margin-top: 4px; }
++.event-win { background: #8b5c21; }
++.player-action { display: block; height: 32px; line-height: 24px; min-width: 36px; width: fit-content; border-radius: 7px; background: #214f42; color: #fff; padding: 3px 10px; font-size: 16px; font-weight: 700; margin: 0 0 10px; }
++.player-action:empty { visibility: hidden; }
++.human-zone { padding: 18px 0 6px; }
++.human-info { gap: 12px; margin-bottom: 16px; }
++.human-info strong { font-size: 19px; }
++.human-info span { font-size: 14px; color: #536b4b; }
++.human-info b { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
++.human-info small { font-size: 12px; }
++.human-info .round-delta { display: block; font-size: 13px; margin-top: 3px; font-weight: 500; }
++.human-hand { min-height: calc(var(--tile-h) + 12px); gap: 6px; padding-top: 10px; }
++.action-bar { min-width: 920px; min-height: 100px; padding: 18px 20px; border-radius: 16px; margin-top: 16px; gap: 20px; flex-wrap: wrap; box-shadow: 0 6px 20px #2943330b; }
++.turn-status { gap: 10px; font-size: 18px; flex: 1 1 250px; }
++.turn-status > strong { line-height: 1.5; }
++.turn-status > span:not(.status-dot) { font-size: 13px; line-height: 1.6; }
++.status-dot { width: 9px; height: 9px; }
++.actions { gap: 9px; }
++.actions button { min-height: 48px; padding: 11px 20px; font-size: 17px; font-weight: 650; border-radius: 10px; touch-action: manipulation; }
++.aside-tabs button { font-size: 14px; }
++.advice-panel h3, .rules-panel h3 { font-size: 21px; }
++.advice-panel p, .rules-panel p, .log-panel li, .assistant-note { font-size: 14px; line-height: 1.7; }
++.recommend b { font-size: 24px; }
++.recommend span, .metrics span, .metrics label { font-size: 13px; }
++.metrics b, .metrics strong { font-size: 24px; }
++.useful, .alternatives, .storage-tools { font-size: 14px; }
++.room-panel-heading p, .room-entry label, .room-seats span, .room-actions > span { font-size: 13px; }
++.room-seats strong { font-size: 16px; }
++.room-entry input, .room-entry button, .room-actions button { min-height: 44px; }
++/* Animation changes presentation only; claim buttons retain stable DOM keys. */
++.tile.entering { animation: river-drop .35s cubic-bezier(.2,.8,.3,1) both; }
++.last-discard { animation: latest-card .32s ease-out; }
++.human-hand .tile.drawn:not(.selected) { animation: draw-card .35s ease-out; }
++.meld { animation: meld-reveal .32s ease-out; }
++.event-bubble { animation: announce .35s cubic-bezier(.2,.8,.3,1); }
++.action-flash { animation: action-glow .7s ease-out; }
++@keyframes river-drop { from { opacity: 0; transform: translateY(-16px) scale(1.15); } to { opacity: 1; transform: translateY(0) scale(1); } }
++@keyframes latest-card { from { opacity: .2; transform: scale(.82) rotate(-5deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
++@keyframes draw-card { from { opacity: .25; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
++@keyframes meld-reveal { from { opacity: .3; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
++@keyframes announce { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
++@keyframes action-glow { 30% { box-shadow: inset 0 0 0 2px #c89a45, 0 0 18px #c89a4533; } }
++@media (min-width: 1450px) { :root { --tile-w: 64px; --tile-h: 90px; } }
++@media (max-width: 1340px) {
++  .layout { grid-template-columns: 1fr; }
++  .layout aside { max-height: none; }
++  .advice-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 25px; }
++  .advice-panel > .eyebrow, .advice-panel > h3, .assistant-note, .storage-tools { grid-column: 1 / -1; }
++}
++@media (max-width: 950px) {
++  :root { --tile-w: 48px; --tile-h: 68px; }
++  .table { --rail-width: 128px; min-width: 780px; min-height: 670px; padding: 14px; gap: 14px 10px; grid-template-rows: auto auto minmax(300px, auto) auto; }
++  .opponent { --small-w: 26px; --small-h: 37px; padding: 10px 8px; }
++  .opponent.current { padding: 9px 7px; }
++  .river { --small-w: 28px; --small-h: 40px; }
++  .river-area { grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr); gap: 14px 10px; grid-template-rows: minmax(150px, auto) minmax(150px, auto); }
++  .center-marker { width: 80px; }
++  .center-marker .tile { --face-w: 56px; --face-h: 78px; }
++  .action-bar { min-width: 780px; padding: 16px; }
++  .player-meta strong { font-size: 14px; }
++}
++@media (max-width: 700px) {
++  .app main { padding: 18px 12px; }
++  .game-heading h2 { font-size: 26px; }
++  .game-controls { max-width: none; gap: 10px; }
++  .game-controls button, .game-controls select { min-height: 44px; }
++  .topbar { height: auto; min-height: 82px; gap: 12px; flex-wrap: wrap; padding: 15px 12px; }
++  .header-tools { gap: 9px; flex-wrap: wrap; }
++  .header-tools button { min-height: 40px; }
++  .save-status { font-size: 12px; }
++  .advice-panel { display: block; }
++  .actions button { min-height: 48px; font-size: 16px; }
++}
++@media (orientation: landscape) and (max-height: 600px) {
++  :root { --tile-w: 46px; --tile-h: 66px; }
++  .app main { padding: 12px; }
++  .game-heading { margin-bottom: 16px; }
++  .game-controls { max-width: none; font-size: 13px; }
++  .game-controls select, .game-controls button { min-height: 40px; }
++  .table { --rail-width: 120px; min-width: 760px; min-height: 610px; padding: 12px; gap: 12px 10px; grid-template-rows: auto auto minmax(290px, auto) auto; }
++  .table-topline { font-size: 14px; }
++  .remaining-badge strong { font-size: 26px; }
++  .table-state { font-size: 13px; }
++  .river-area { grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr); grid-template-rows: minmax(145px, auto) minmax(145px, auto); gap: 12px 10px; }
++  .opponent { --small-w: 25px; --small-h: 36px; }
++  .river { --small-w: 27px; --small-h: 38px; }
++  .river-label { font-size: 12px; }
++  .center-marker { width: 76px; }
++  .center-marker .tile { --face-w: 52px; --face-h: 74px; }
++  .human-zone { padding-top: 14px; }
++  .human-info strong { font-size: 17px; }
++  .human-info span { font-size: 13px; }
++  .human-info b { font-size: 24px; }
++  .human-hand { min-height: 78px; gap: 5px; }
++  .action-bar { min-width: 760px; min-height: 96px; margin-top: 12px; padding: 14px; }
++  .turn-status { font-size: 17px; }
++  .actions button { min-height: 46px; font-size: 16px; padding: 10px 16px; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .tile, .meld, .last-discard, .event-bubble, .action-flash { animation: none !important; transition: none !important; }
++}
++.is-replay .tile, .is-replay .meld, .is-replay .last-discard { animation: none; }
+diff --git a/tests/claim-sync.test.ts b/tests/claim-sync.test.ts
+--- a/tests/claim-sync.test.ts
++++ b/tests/claim-sync.test.ts
+@@ -38,6 +38,7 @@
+     const response=await f.call(`/${f.id}/command`,f.tokens[1],data);assert.equal(response.status,200,kind);
+     const acknowledged=(await response.json()).room as RoomView;
+     assert.equal(acknowledged.game!.pending!.responses[0]!.type,kind);
++    assert.equal(acknowledged.game!.events!.filter(e => e.kind !== "discard").length, 0, "unresolved calls are not announced");
+     const gate=new RoomUpdates();gate.accept(f.room);
+     const pollEpoch=gate.epoch, commandEpoch=gate.beginCommand();gate.accept(acknowledged,commandEpoch);
+     assert.equal(gate.accept({...f.room,version:acknowledged.version+1},pollEpoch),false);
+@@ -52,6 +53,7 @@
+     const game=(await f.store.load(f.id))!.game!;
+     if(kind==="win"){assert.equal(game.phase,"end");assert.equal(game.winners[0].player,1);}
+     else{assert.equal(game.players[1].melds[0].kind,kind==="chow"?"chow":kind==="pung"?"pung":"kong");assert.equal(game.current,1);}
++    assert.ok(game.events!.some(e => e.kind === kind && e.actor === 1), "only the applied action produces a public event");
+   }
+ });
+ test("An already selected call is explicitly cancelled when another player wins; it isn't silently changed to pass",async()=>{
+@@ -62,6 +64,8 @@
+   await f.call(`/${f.id}/command`,f.tokens[2],{stage:other.stage,requestId:crypto.randomUUID(),command:{type:"claim",action:{type:"win"}}});
+   const g=(await f.store.load(f.id))!.game!;assert.equal(g.winners[0].player,2);
+   assert.ok(g.log.some(s=>s.includes("选择碰")&&s.includes("胡牌优先")));
++  assert.equal(g.events!.some(e=>e.kind==="pung"),false,"cancelled pung must not be spoken");
++  assert.ok(g.events!.some(e=>e.kind==="win"&&e.actor===2));
+ });
+ test("Network grace accepts a live click at the deadline, but cannot replay a claim from a different stage",async()=>{
+   const f=await fixture("pung");f.advance(TURN_MS+NETWORK_GRACE_MS-100);
+diff --git a/tests/engine.test.ts b/tests/engine.test.ts
+--- a/tests/engine.test.ts
++++ b/tests/engine.test.ts
+@@ -222,6 +222,12 @@
+   g.players[3].hand = tiles("2233445566778p");
+   return g;
+ }
++test("Legacy JSON saves initialize public events on the next confirmed action", () => {
++  const g = rigDiscard("mcr");
++  delete g.events;
++  discard(g,0,0);
++  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0}]);
++});
+ test("Sichuan simultaneous wins pay each winner and continue with two active players", () => {
+   const g = rigDiscard("sichuan");
+   discard(g, 0, 0);
+@@ -236,6 +242,7 @@
+   assert.equal(g.current, 3);
+   assert.equal(g.phase, "turn");
+   assert.equal(g.players[0].river.length, 0);
++  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2]]);
+ });
+ test("MCR simultaneous win picks nearest player and ends immediately", () => {
+   const g = rigDiscard("mcr");
+@@ -272,6 +279,7 @@
+       respond(g, i, { type: i === 1 ? "win" : "pass" });
+   advance(g);
+   assert.equal(g.players[0].melds[0].kind, "pung");
++  assert.equal(g.events!.some(e => e.kind === "kong"), false, "robbed added kong never announces a completed kong");
+   assert.ok(!g.payments.some((p) => p.kind === "kong"));
+   assert.equal(g.winners[0].player, 1);
+ });
+@@ -287,6 +295,7 @@
+   assert.equal(g.players[0].score, 4);
+   assert.equal(g.players[2].score, 0);
+   assert.equal(g.kongDraw, true);
++  assert.deepEqual(g.events!.at(-1), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
+ });
+ test("Wall end performs ready, flower pig and tax refund accounting", () => {
+   const g = rigDiscard("sichuan");
+diff --git a/tests/feedback.test.ts b/tests/feedback.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/feedback.test.ts
+@@ -0,0 +1,81 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { EventCursor, eventSpeech } from "../src/feedback/events";
++import { chineseVoice, VoiceAnnouncer } from "../src/feedback/voice";
++import type { SpeechPlatform } from "../src/feedback/voice";
++import type { TableEvent } from "../src/engine/types";
++
++const event = (id: number, kind: TableEvent["kind"] = "discard", tile = 0): TableEvent => ({ id, actor: 1, kind, tile });
++function fakeSpeech(throws = false) {
++  const spoken: SpeechSynthesisUtterance[] = [];
++  let cancelled = 0;
++  const voices = [
++    { lang: "en-US", localService: true },
++    { lang: "zh-CN", localService: false },
++    { lang: "zh-CN", localService: true },
++  ] as SpeechSynthesisVoice[];
++  const platform: SpeechPlatform = {
++    synth: { speak: u => { if (throws) throw Error("unavailable"); spoken.push(u); }, cancel: () => { cancelled++; }, resume() {}, getVoices: () => voices },
++    utterance: text => ({ text } as SpeechSynthesisUtterance),
++  };
++  return { spoken, voices, platform, get cancelled() { return cancelled; }, end: () => spoken.at(-1)!.onend?.call(spoken.at(-1)!, {} as SpeechSynthesisEvent) };
++}
++test("Public tile names and calls have short unambiguous Chinese speech", () => {
++  assert.deepEqual([0,8,9,17,18,26,27,28,29,30,31,32,33].map(t => eventSpeech(event(1,"discard",t))),
++    ["一万","九万","一筒","九筒","一条","九条","东风","南风","西风","北风","红中","发财","白板"]);
++  assert.deepEqual(["chow","pung","kong","win"].map(kind => eventSpeech(event(1,kind as TableEvent["kind"]))), ["吃","碰","杠","胡"]);
++  assert.equal(eventSpeech({id:1,actor:0,kind:"kong"}),"杠");
++  assert.equal(eventSpeech({...event(1,"win"),self:true}),"自摸，胡");
++  assert.equal(eventSpeech(event(1,"discard",-1)),"");
++});
++test("Cursor skips refresh history and consumes batched updates exactly once", () => {
++  const c = new EventCursor();
++  assert.deepEqual(c.read("room-a",[event(1)]),[]);
++  assert.deepEqual(c.read("room-a",[event(1),event(2),event(3,"win")]).map(e=>e.id),[2,3]);
++  assert.deepEqual(c.read("room-a",[event(1),event(2),event(3,"win")]),[]);
++  assert.deepEqual(c.read("room-a",[event(1),event(2)]),[]); // delayed old poll
++  assert.deepEqual(c.read("room-a",[event(1),event(2),event(3)]),[]);
++  assert.deepEqual(c.read("room-a",[event(1),event(2),event(3),event(4)]).map(e=>e.id),[4]);
++});
++test("Changing rooms and silent replay never backfill old announcements", () => {
++  const c = new EventCursor();c.read("a",[]);
++  assert.deepEqual(c.read("b",[event(1),event(2)]),[]);
++  assert.deepEqual(c.read("b",[event(1),event(2),event(3)],true),[]);
++  assert.deepEqual(c.read("b",[event(1),event(2),event(3)]),[]);
++  assert.deepEqual(c.read("b",[event(1),event(2),event(3),event(4)]).map(e=>e.id),[4]);
++});
++test("Speech serializes multi-win batches and selects an available local Chinese voice", () => {
++  const f=fakeSpeech(), v=new VoiceAnnouncer(f.platform);
++  try {
++    v.announce(event(1));v.announce(event(2,"win"));v.announce(event(3,"win"));
++    assert.equal(f.spoken.length,1);assert.equal(f.spoken[0].voice,f.voices[2]);assert.equal(f.spoken[0].lang,"zh-CN");
++    f.end();assert.equal(f.spoken[1].text,"胡");f.end();assert.equal(f.spoken[2].text,"胡");f.end();
++    assert.equal(f.spoken.length,3);
++    assert.equal(chineseVoice([f.voices[0]]),undefined);
++  } finally {v.stop();}
++});
++test("Fast discard backlog is bounded without losing queued wins", () => {
++  const f=fakeSpeech(), v=new VoiceAnnouncer(f.platform);
++  try {
++    v.announce(event(1));v.announce(event(2,"win"));
++    for(let i=3;i<100;i++)v.announce(event(i,"discard",i%27));
++    while(f.spoken.length<9){const n=f.spoken.length;f.end();if(f.spoken.length===n)break;}
++    assert.equal(f.spoken.filter(u=>u.text==="胡").length,1);
++    assert.ok(f.spoken.length<=9);
++  }finally{v.stop();}
++});
++test("Mute stops active and queued speech; stale callbacks cannot resurrect it", () => {
++  const f=fakeSpeech(),v=new VoiceAnnouncer(f.platform);
++  v.announce(event(1));v.announce(event(2,"pung"));const old=f.spoken[0];v.stop();
++  old.onend?.call(old,{} as SpeechSynthesisEvent);assert.equal(f.spoken.length,1);assert.equal(f.cancelled,1);
++  v.announce(event(3,"win"));old.onend?.call(old,{} as SpeechSynthesisEvent);assert.equal(f.spoken.length,2);
++  v.stop();
++});
++test("Unsupported or broken speech platforms never interrupt gameplay", () => {
++  const absent=new VoiceAnnouncer(null);assert.equal(absent.supported,false);assert.doesNotThrow(()=>absent.announce(event(1)));
++  const f=fakeSpeech(true);let errors=0;const v=new VoiceAnnouncer(f.platform,()=>errors++);
++  assert.doesNotThrow(()=>v.announce(event(1)));assert.equal(errors,1);v.stop();
++  const working=fakeSpeech(),w=new VoiceAnnouncer(working.platform,()=>errors++);
++  w.announce(event(1));w.announce(event(2));working.spoken[0].onerror?.call(working.spoken[0],{} as SpeechSynthesisErrorEvent);
++  assert.equal(working.spoken.length,1);assert.equal(errors,2);w.stop();
++});
+diff --git a/tests/rooms.test.ts b/tests/rooms.test.ts
+--- a/tests/rooms.test.ts
++++ b/tests/rooms.test.ts
+@@ -49,6 +49,7 @@
+   const stored = await s.store.load(id); assert.ok(stored?.game);
+   assert.equal(JSON.stringify(stored).includes(first.token), false);
+   stored.game.players[1].melds = [{ kind: "kong", tiles: [2,2,2,2], from: 1, concealed: true }];
++  stored.game.events = [{id:1,actor:2,kind:"discard",tile:0},{id:2,actor:1,kind:"kong"}];
+   stored.game.players[2].won = true; stored.game.players[2].hand = [0,0,1,2,3];
+   stored.game.winners.push({ player: 2, from: 1, tile: 0, self: false, received: 1, score: { fan: 0, items: [], points: 1, legal: true } });
+   const view = roomView(stored, 0, s.time).game!;
+@@ -58,9 +59,11 @@
+   assert.equal(view.players[2].hand.filter(t => t === 0).length, 1);
+   assert.equal(view.players[2].hand.filter(t => t === -1).length, 4);
+   assert.equal(view.frames.length, 0);
++  assert.deepEqual(view.events!.at(-1),{id:2,actor:1,kind:"kong"});
+   const rotated = roomView(stored, 1, s.time).game!;
+   assert.deepEqual(rotated.players[0].hand, stored.game.players[1].hand);
+   assert.equal(rotated.dealer, (stored.game.dealer + 3) % 4);
++  assert.deepEqual(rotated.events,[{id:1,actor:1,kind:"discard",tile:0},{id:2,actor:0,kind:"kong"}]);
+   stored.game.phase = "end";
+   const ended = roomView(stored, 0, s.time).game!;
+   assert.deepEqual(ended.players[1].hand, stored.game.players[1].hand);
