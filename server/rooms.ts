@@ -1,12 +1,12 @@
 import { initCore, suit } from "../src/engine/core";
 import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
 import { newGame, exchangeAll, voidAll, chooseExchange, chooseVoid, publicView,
-  ownActions, act, discard, respond, advance } from "../src/engine/game";
+  ownActions, act, discard, respond, advance, historicalDiscards } from "../src/engine/game";
 import type { Game, Config, Frame, Meld } from "../src/engine/types";
 import type { RoomCommand, RoomView } from "../src/online/protocol";
-import { configInput, object, InputError } from "./validation";
+import { configInput, object, InputError, difficultyInput, styleInput } from "./validation";
 
-export const TURN_MS = 45000, SETUP_MS = 60000, DISCONNECT_MS = 15000, ROOM_TTL = 2 * 3600000;
+export const TURN_MS = 45000, SETUP_MS = 60000, DISCONNECT_MS = 30000, NETWORK_GRACE_MS = 3000, ROOM_TTL = 2 * 3600000;
 type Seat = { name: string; hash: string; seen: number; auto: boolean };
 export type RoomRecord = {
   id: string; version: number; host: number; config: Config; seats: (Seat | null)[];
@@ -51,7 +51,7 @@ function waiting(r: RoomRecord, i: number) {
 export function tickRoom(r: RoomRecord, now: number) {
   clock(r, now);
   r.seats.forEach((s, i) => {
-    if (s && (now - s.seen > DISCONNECT_MS || (now >= r.deadline && waiting(r, i)))) s.auto = true;
+    if (s && (now - s.seen > DISCONNECT_MS || (now > r.deadline + NETWORK_GRACE_MS && waiting(r, i)))) s.auto = true;
   });
   const g = r.game;
   if (!g || g.phase === "end" || now < r.botAt) return;
@@ -82,6 +82,12 @@ function command(r: RoomRecord, seat: number, c: RoomCommand, now: number) {
     rename(r); return;
   }
   const s = r.seats[seat]!;
+  if (c.type === "difficulty") {
+    if (r.host !== seat) throw new RoomError("只有房主可调整电脑难度", 403);
+    r.config.aiDifficulty = difficultyInput(c.difficulty);
+    if (r.game) r.game.config.aiDifficulty = r.config.aiDifficulty;
+    return;
+  }
   if (c.type === "takeback" || c.type === "autoplay") {
     s.auto = c.type === "autoplay";
     if (c.type === "takeback" && waiting(r, seat)) r.deadline = now +
@@ -126,17 +132,18 @@ export function roomView(r: RoomRecord, self: number, now: number): RoomView {
     safe = {
       ...clone(g), seed: 0, wall: Array(g.wall.length).fill(-1),
       current: at(g.current), dealer: at(g.dealer),
+      events: (g.events ?? []).map(e => ({ ...e, actor: at(e.actor) })),
       drawnTile: g.current === self || reveal ? g.drawnTile : null,
       players: order.map(i => {
         const p = g.players[i], w = g.winners.find(w => w.player === i), winning = p.hand.lastIndexOf(w?.tile ?? -1);
-        return { ...clone(p), hand: p.hand.map((t, k) => reveal || i === self || (p.won && k === winning) ? t : -1),
+        return { ...clone(p), discards: historicalDiscards(g, i), hand: p.hand.map((t, k) => reveal || i === self || (p.won && k === winning) ? t : -1),
           melds: p.melds.map(m => ({ ...rotateMeld(m), tiles: !reveal && i !== self && m.concealed ? m.tiles.map(() => -1) : [...m.tiles] })) };
       }),
       winners: g.winners.map(w => ({ ...clone(w), player: at(w.player), from: at(w.from) })),
       payments: g.payments.map(p => ({ ...p, from: at(p.from), to: at(p.to) })),
       pending: g.pending ? { ...clone(g.pending), from: at(g.pending.from),
         actions: order.map(i => i === self ? clone(g.pending!.actions[i]).map(a => ({ ...a, tiles: a.tiles ? [...a.tiles] : undefined })) : []),
-        responses: order.map(i => g.pending!.responses[i] === null ? null : { type: "pass" }) } : null,
+        responses: order.map(i => i === self ? clone(g.pending!.responses[i]) : g.pending!.responses[i] === null ? null : { type: "pass" }) } : null,
       frames: reveal ? g.frames.map(rotateFrame) : [],
       previous: g.previous.map(fs => fs.map(rotateFrame)),
     };
@@ -152,7 +159,7 @@ function json(data: unknown, status = 200) { return new Response(JSON.stringify(
 export function createRoomsApi(store: RoomStore, now = () => Date.now()) {
   return async (req: Request): Promise<Response> => {
     try {
-      const path = new URL(req.url).pathname, match = /^\/api\/rooms(?:\/([A-F0-9]{8})(?:\/(join|command))?)?\/?$/.exec(path);
+      const path = new URL(req.url).pathname, match = /^\/api\/rooms(?:\/([A-F0-9]{8})(?:\/(join|command|analyze))?)?\/?$/.exec(path);
       if (!match) throw new RoomError("房间接口不存在", 404);
       const [, id, route] = match;
       const method = !id || route ? "POST" : "GET";
@@ -185,6 +192,13 @@ export function createRoomsApi(store: RoomStore, now = () => Date.now()) {
         if (!r || r.expires <= time) throw new RoomError("房间不存在或已过期", 404);
         const expected = r.version;
         let seat = r.seats.findIndex(s => s?.hash === tokenHash);
+        if (route === "analyze") {
+          if (seat < 0 || bearer.length !== 48) throw new RoomError("无法验证座位", 401);
+          const style = styleInput(data.style), g = r.game;
+          if (data.stage !== undefined && data.stage !== r.stage) throw new RoomError("建议对应的牌局已变化", 409);
+          return json({ stage: r.stage, style, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
+            ? advise(publicView(g, seat), { style, difficulty: "advanced" }) : [] });
+        }
         if (route === "join") {
           if (r.game && r.game.phase !== "end") throw new RoomError("请等本局结束后再加入", 409);
           seat = r.seats.findIndex(s => s === null);
@@ -202,10 +216,10 @@ export function createRoomsApi(store: RoomStore, now = () => Date.now()) {
           const key = `${seat}:${data.requestId}`;
           if (r.commands.includes(key)) return json({ room: roomView(r, seat, time) });
           const c = object(data.command) as unknown as RoomCommand;
-          const administrative = ["leave", "takeback", "autoplay", "start", "next"].includes(c.type);
+          const administrative = ["leave", "takeback", "autoplay", "start", "next", "difficulty"].includes(c.type);
           if (!administrative && data.stage !== r.stage) throw new RoomError("牌局已变化，请重试当前操作", 409);
           // Preserve the grace deadline on live commands; only the polling path executes bot moves.
-          if (!administrative && waiting(r, seat) && time >= r.deadline) { r.seats[seat]!.auto = true; throw new RoomError("操作已超时，请收回操作", 409); }
+          if (!administrative && waiting(r, seat) && time > r.deadline + NETWORK_GRACE_MS) { r.seats[seat]!.auto = true; throw new RoomError("操作已超时，请收回操作", 409); }
           command(r, seat, c, time);
           r.commands.push(key); r.commands = r.commands.slice(-80);
         } else tickRoom(r, time);

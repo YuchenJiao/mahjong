@@ -12,10 +12,15 @@ import type {
   WinScore,
   PublicView,
   Frame,
+  TableEvent,
 } from "./types";
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 function log(g: Game, s: string) {
   g.log.push(s);
+}
+function emit(g: Game, event: Omit<TableEvent, "id">) {
+  g.events ??= [];
+  g.events.push({ ...event, id: g.events.length + 1 });
 }
 function frame(g: Game, label: string) {
   g.frames.push({
@@ -62,6 +67,7 @@ export function newGame(config: Config, prior?: Game, seed?: number, entropy?: (
       hand: [],
       melds: [],
       river: [],
+      discards: [],
       voidSuit: -1,
       won: false,
       score: prior?.players[i].score ?? 0,
@@ -80,6 +86,7 @@ export function newGame(config: Config, prior?: Game, seed?: number, entropy?: (
     callCount: 0,
     pending: null,
     log: [],
+    events: [],
     payments: [],
     winners: [],
     frames: [],
@@ -311,9 +318,12 @@ export function discard(g: Game, i: number, t: Tile) {
     throw Error("当前不能打这张牌");
   const p = g.players[i];
   p.hand.splice(p.hand.indexOf(t), 1);
+  p.discards ??= historicalDiscards(g, i);
   p.river.push(t);
+  p.discards.push(t);
   g.discardCount++;
   log(g, `${p.name}打出${tileName(t)}`);
+  emit(g, { actor: i, kind: "discard", tile: t });
   setPending(g, t, i);
   g.drawnTile = null;
   frame(g, `${p.name} · 打${tileName(t)}`);
@@ -359,7 +369,8 @@ function receiveWin(g: Game, i: number, self: boolean, precomputed?: WinScore) {
   p.won = true;
   if (!self) p.hand.push(t);
   sortHand(p.hand);
-  g.winners.push({ player: i, from, tile: t, self, score: sc, received });
+  g.winners.push({ eventId: `${g.round}:${g.discardCount}:${self ? "self" + i : from}:${t}`, player: i, from, tile: t, self, score: sc, received });
+  emit(g, { actor: i, kind: "win", tile: t, self });
   log(
     g,
     `${p.name}${self ? "自摸" : "胡牌"} · ${g.config.scoring ? `${sc.fan}${g.config.mode === "mcr" ? "分" : "番"}` : "固定分"} · 收入${received}`,
@@ -420,6 +431,7 @@ function completeAdded(g: Game, from: number, k: number, t: Tile) {
   g.callCount++;
   if (g.config.mode === "sichuan") kongPayment(g, from, m.from, false, true);
   log(g, `${p.name}补杠${tileName(t)}`);
+  emit(g, { actor: from, kind: "kong", tile: t });
   frame(g, `${p.name} · 补杠${tileName(t)}`);
   draw(g, from, true);
 }
@@ -430,12 +442,13 @@ export function respond(g: Game, i: number, a: Action) {
     g.pending.responses[i]
   )
     throw Error("当前没有待响应的操作");
-  if (
-    a.type !== "pass" &&
-    !g.pending.actions[i].some((x) => JSON.stringify(x) === JSON.stringify(a))
-  )
-    throw Error("不是合法操作");
-  g.pending.responses[i] = a;
+  g.pending.responses[i] = a.type === "pass" ? { type: "pass" } : canonicalAction(g.pending.actions[i], a);
+}
+export function canonicalAction(actions: Action[], input: Action): Action {
+  const action = actions.find(a => a.type === input?.type && a.tile === input.tile &&
+    a.meldIndex === input.meldIndex && JSON.stringify(a.tiles ?? []) === JSON.stringify(input.tiles ?? []));
+  if (!action) throw Error("不是合法操作");
+  return JSON.parse(JSON.stringify(action));
 }
 export function resolveClaims(g: Game) {
   const q = g.pending;
@@ -444,6 +457,8 @@ export function resolveClaims(g: Game) {
   let winners = order.filter((i) => q.responses[i]?.type === "win");
   if (!rules[g.config.mode].multiWin) winners = winners.slice(0, 1);
   if (winners.length) {
+    order.filter(i => !winners.includes(i) && q.responses[i]?.type !== "pass").forEach(i =>
+      log(g, `${g.players[i].name}选择${({ chow: "吃", pung: "碰", kong: "杠", win: "胡" } as Record<string, string>)[q.responses[i]!.type]}，因胡牌优先或胡牌顺序取消`));
     const scores = winners.map((i) => winScore(g, i, false));
     winners.forEach((i, k) => receiveWin(g, i, false, scores[k]));
     if (q.rob) removeTiles(g.players[q.from], [q.tile]);
@@ -492,6 +507,7 @@ export function resolveClaims(g: Game) {
     g.pending = null;
     g.drawnTile = null;
     g.kongDraw = false;
+    emit(g, { actor: caller, kind: a.type as "chow" | "pung" | "kong", tile: q.tile });
     log(
       g,
       `${p.name}${a.type === "chow" ? "吃" : a.type === "kong" ? "杠" : "碰"}${tileName(q.tile)}`,
@@ -510,8 +526,7 @@ export function resolveClaims(g: Game) {
   return true;
 }
 export function act(g: Game, i: number, a: Action) {
-  if (!ownActions(g, i).some((x) => JSON.stringify(x) === JSON.stringify(a)))
-    throw Error("当前不能进行此操作");
+  a = canonicalAction(ownActions(g, i), a);
   if (a.type === "win") {
     receiveWin(g, i, true);
     frame(g, `${g.players[i].name} · 自摸`);
@@ -532,6 +547,7 @@ export function act(g: Game, i: number, a: Action) {
     g.callCount++;
     if (g.config.mode === "sichuan") kongPayment(g, i, i, true, false);
     log(g, `${p.name}暗杠`);
+    emit(g, { actor: i, kind: "kong" });
     frame(g, `${p.name} · 暗杠`);
     draw(g, i, true);
   } else if (a.type === "addedKong") {
@@ -614,7 +630,16 @@ function endRound(g: Game, reason: string) {
 }
 export function publicView(g: Game, i: number): PublicView {
   const p = g.players[i];
+  const publicWinningTiles: Tile[] = [];
+  const events = new Map<string, typeof g.winners>();
+  g.winners.forEach(w => {
+    const id = w.eventId ?? `${w.from}:${w.tile}`;
+    events.set(id, [...(events.get(id) ?? []), w]);
+  });
+  for (const batch of events.values()) if (!batch.some(w => w.player === i)) publicWinningTiles.push(batch[0].tile);
   return {
+    publicWinningTiles,
+    lastDiscard: g.pending && !g.pending.rob ? { tile: g.pending.tile, from: g.pending.from } : undefined,
     config: g.config,
     self: i,
     hand: [...p.hand],
@@ -628,11 +653,19 @@ export function publicView(g: Game, i: number): PublicView {
         m.concealed && j !== i ? { ...m, tiles: [] } : clone(m),
       ),
       river: [...q.river],
+      discards: historicalDiscards(g, j),
       voidSuit: q.voidSuit,
       won: q.won,
       handCount: q.hand.length,
     })),
   };
+}
+export function historicalDiscards(g: Game, seat: number): Tile[] {
+  const p = g.players[seat];
+  if (p.discards) return [...p.discards];
+  const history = g.frames.filter(f => f.lastFrom === seat && f.lastTile !== undefined &&
+    f.label.endsWith(" · 打" + tileName(f.lastTile))).map(f => f.lastTile!);
+  return history.length ? history : [...p.river];
 }
 export function snapshot(g: Game): Frame {
   return {

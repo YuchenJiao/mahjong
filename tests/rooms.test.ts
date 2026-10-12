@@ -7,7 +7,7 @@ import { initCore } from "../src/engine/core";
 import { defaultConfig } from "../src/engine/types";
 import { chooseExchange, chooseVoid, publicView } from "../src/engine/game";
 import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
-import { createRoomsApi, DISCONNECT_MS, TURN_MS, tickRoom, roomView } from "../server/rooms";
+import { createRoomsApi, DISCONNECT_MS, TURN_MS, NETWORK_GRACE_MS, tickRoom, roomView, stageKey } from "../server/rooms";
 import { MemoryRoomStore } from "../server/store-memory";
 import { SqliteRoomStore } from "../server/store-sqlite";
 import { withCors } from "../server/cors";
@@ -49,6 +49,7 @@ test("Room views hide the wall, seeds, opponent hands, concealed kongs, actions 
   const stored = await s.store.load(id); assert.ok(stored?.game);
   assert.equal(JSON.stringify(stored).includes(first.token), false);
   stored.game.players[1].melds = [{ kind: "kong", tiles: [2,2,2,2], from: 1, concealed: true }];
+  stored.game.events = [{id:1,actor:2,kind:"discard",tile:0},{id:2,actor:1,kind:"kong"}];
   stored.game.players[2].won = true; stored.game.players[2].hand = [0,0,1,2,3];
   stored.game.winners.push({ player: 2, from: 1, tile: 0, self: false, received: 1, score: { fan: 0, items: [], points: 1, legal: true } });
   const view = roomView(stored, 0, s.time).game!;
@@ -58,9 +59,11 @@ test("Room views hide the wall, seeds, opponent hands, concealed kongs, actions 
   assert.equal(view.players[2].hand.filter(t => t === 0).length, 1);
   assert.equal(view.players[2].hand.filter(t => t === -1).length, 4);
   assert.equal(view.frames.length, 0);
+  assert.deepEqual(view.events!.at(-1),{id:2,actor:1,kind:"kong"});
   const rotated = roomView(stored, 1, s.time).game!;
   assert.deepEqual(rotated.players[0].hand, stored.game.players[1].hand);
   assert.equal(rotated.dealer, (stored.game.dealer + 3) % 4);
+  assert.deepEqual(rotated.events,[{id:1,actor:1,kind:"discard",tile:0},{id:2,actor:0,kind:"kong"}]);
   stored.game.phase = "end";
   const ended = roomView(stored, 0, s.time).game!;
   assert.deepEqual(ended.players[1].hand, stored.game.players[1].hand);
@@ -93,7 +96,7 @@ test("Disconnected and timed-out humans are entrusted; resume preserves the hand
   const r = (await s.store.load(id))!;
   r.game!.current = 0; r.game!.phase = "turn"; r.game!.pending = null;
   r.stage = `${r.game!.round}:turn:0:${r.game!.frames.length}`;
-  r.deadline = s.time - 1; r.botAt = s.time + 100000;
+  r.deadline = s.time - NETWORK_GRACE_MS - 1; r.botAt = s.time + 100000;
   tickRoom(r, s.time); assert.equal(r.seats[0]!.auto, true);
   await s.store.save({ ...r, version: r.version + 1 }, r.version);
   const view = roomView(r, 0, s.time);
@@ -147,5 +150,23 @@ test("Both modes finish complete online games with 1, 2, 3 and 4 independent hum
     assert.ok(final.game!.frames.length > 0);
     assert.equal((await s.send(id, first.token, final, { type: "next" })).status, 200);
     assert.equal((await s.read(id, first.token)).game!.round, 2);
+  }
+});
+test("Each computer difficulty finishes both rule modes through the room API",async()=>{
+  for(const mode of ["sichuan","mcr"] as const)for(const difficulty of ["easy","normal","advanced"] as const){
+    const s=setup(mode),first=await s.create(),id=first.room.id;
+    await s.send(id,first.token,first.room,{type:"difficulty",difficulty});
+    await s.send(id,first.token,first.room,{type:"start"});
+    const begun=await s.read(id,first.token);
+    await s.send(id,first.token,begun,{type:"autoplay"});
+    let finished=false;
+    for(let turn=0;turn<800;turn++){
+      s.advance();const state=await s.read(id,first.token);
+      assert.equal(state.config.aiDifficulty,difficulty);
+      if(state.game!.phase==="end"){
+        assert.equal(state.game!.players.reduce((sum,p)=>sum+p.score,0),0);finished=true;break;
+      }
+    }
+    assert.ok(finished,`${mode}/${difficulty} did not terminate`);
   }
 });

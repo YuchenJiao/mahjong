@@ -4,6 +4,8 @@ import type {
   Meld,
   Player,
   PublicView,
+  PlayStyle,
+  AiDifficulty,
   WinContext,
 } from "../src/engine/types";
 import { counts } from "../src/engine/core";
@@ -24,6 +26,16 @@ function boolean(x: unknown): boolean {
   if (typeof x !== "boolean") throw new InputError("Expected boolean");
   return x;
 }
+export function difficultyInput(x: unknown): AiDifficulty {
+  if (x === undefined) return "advanced";
+  if (x !== "easy" && x !== "normal" && x !== "advanced") throw new InputError("Invalid AI difficulty");
+  return x;
+}
+export function styleInput(x: unknown): PlayStyle {
+  if (x === undefined) return "balanced";
+  if (x !== "attack" && x !== "balanced" && x !== "defense") throw new InputError("Invalid play style");
+  return x;
+}
 export function configInput(x: unknown): Config {
   const o = object(x);
   if (o.mode !== "sichuan" && o.mode !== "mcr")
@@ -38,6 +50,7 @@ export function configInput(x: unknown): Config {
     throw new InputError("Invalid selfDraw");
   return {
     mode: o.mode,
+    aiDifficulty: difficultyInput(o.aiDifficulty),
     scoring: o.scoring === undefined ? true : boolean(o.scoring),
     mcrEightPointMinimum:
       o.mcrEightPointMinimum === undefined ? true : boolean(o.mcrEightPointMinimum),
@@ -174,6 +187,7 @@ export function viewInput(x: unknown): PublicView {
     return {
       melds: i === self ? melds : meldsInput(p.melds ?? [], config, true),
       river: tiles(p.river ?? [], config, 136),
+      discards: tiles(p.discards ?? p.river ?? [], config, 136),
       voidSuit: integer(p.voidSuit ?? -1, -1, 2),
       won: p.won === undefined ? false : boolean(p.won),
       handCount: integer(p.handCount ?? 13, 0, 18),
@@ -183,6 +197,8 @@ export function viewInput(x: unknown): PublicView {
   return {
     config,
     self,
+    lastDiscard: o.lastDiscard === undefined ? undefined : { tile: integer(object(o.lastDiscard).tile, 0, config.mode === "mcr" ? 33 : 26), from: integer(object(o.lastDiscard).from, 0, 3) },
+    publicWinningTiles: tiles(o.publicWinningTiles ?? [], config, 4),
     hand,
     melds,
     voidSuit: integer(o.voidSuit ?? -1, -1, 2),

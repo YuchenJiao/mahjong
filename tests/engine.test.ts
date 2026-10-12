@@ -222,6 +222,12 @@ function rigDiscard(mode: "sichuan" | "mcr", scoring = false) {
   g.players[3].hand = tiles("2233445566778p");
   return g;
 }
+test("Legacy JSON saves initialize public events on the next confirmed action", () => {
+  const g = rigDiscard("mcr");
+  delete g.events;
+  discard(g,0,0);
+  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0}]);
+});
 test("Sichuan simultaneous wins pay each winner and continue with two active players", () => {
   const g = rigDiscard("sichuan");
   discard(g, 0, 0);
@@ -236,6 +242,7 @@ test("Sichuan simultaneous wins pay each winner and continue with two active pla
   assert.equal(g.current, 3);
   assert.equal(g.phase, "turn");
   assert.equal(g.players[0].river.length, 0);
+  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2]]);
 });
 test("MCR simultaneous win picks nearest player and ends immediately", () => {
   const g = rigDiscard("mcr");
@@ -272,6 +279,7 @@ test("Robbing added kong cancels its payment and consumes exactly the offered ti
       respond(g, i, { type: i === 1 ? "win" : "pass" });
   advance(g);
   assert.equal(g.players[0].melds[0].kind, "pung");
+  assert.equal(g.events!.some(e => e.kind === "kong"), false, "robbed added kong never announces a completed kong");
   assert.ok(!g.payments.some((p) => p.kind === "kong"));
   assert.equal(g.winners[0].player, 1);
 });
@@ -287,6 +295,7 @@ test("Concealed kong payment only charges active opponents", () => {
   assert.equal(g.players[0].score, 4);
   assert.equal(g.players[2].score, 0);
   assert.equal(g.kongDraw, true);
+  assert.deepEqual(g.events!.at(-1), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
 });
 test("Wall end performs ready, flower pig and tax refund accounting", () => {
   const g = rigDiscard("sichuan");
