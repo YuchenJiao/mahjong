@@ -1,0 +1,15 @@
+{
+  "config": {
+    "mode": "sichuan",
+    "scoring": true,
+    "base": 1,
+    "cap": 5,
+    "selfDraw": "base"
+  },
+  "player": {
+    "hand": [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+    "melds": [],
+    "voidSuit": 2
+  },
+  "context": { "self": true, "winTile": 5, "seat": 0, "wind": 0 }
+}

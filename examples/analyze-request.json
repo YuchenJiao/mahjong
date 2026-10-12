@@ -1,0 +1,16 @@
+{
+  "config": { "mode": "mcr", "scoring": true },
+  "self": 0,
+  "hand": [0, 1, 2, 3, 4, 5, 9, 10, 11, 18, 19, 27, 27, 33],
+  "melds": [],
+  "voidSuit": -1,
+  "seat": 0,
+  "wind": 0,
+  "remaining": 80,
+  "players": [
+    { "melds": [], "river": [], "voidSuit": -1, "won": false, "handCount": 14 },
+    { "melds": [], "river": [], "voidSuit": -1, "won": false, "handCount": 13 },
+    { "melds": [], "river": [], "voidSuit": -1, "won": false, "handCount": 13 },
+    { "melds": [], "river": [], "voidSuit": -1, "won": false, "handCount": 13 }
+  ]
+}

@@ -1,0 +1,374 @@
+{
+  "project": "quiet-mahjong",
+  "version": "2.0.0",
+  "rootDirectory": "quiet-mahjong",
+  "validated": {
+    "tests": 29,
+    "mcrRegressionCases": 214,
+    "localCompleteGames": 32,
+    "onlineCompleteGames": 8,
+    "humanCounts": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "build": true,
+    "realNodeHttp": true,
+    "compiledWorker": true
+  },
+  "excludes": [
+    ".data",
+    ".git",
+    ".openai",
+    ".sites-checkout",
+    ".sites-runtime",
+    ".vercel",
+    "dist",
+    "node_modules",
+    "site credentials",
+    "actual environment files"
+  ],
+  "files": [
+    {
+      "path": ".env.example",
+      "size": 376,
+      "sha256": "59a25cb3cd85245727d34016dc826be0a0486ba95d4248941f2d401c65168fd2"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 421,
+      "sha256": "eeed3cda4b7375ee3b41a10bee657552dca69bc88804d5b03da361c13bc68906"
+    },
+    {
+      "path": ".github/workflows/pages.yml",
+      "size": 1194,
+      "sha256": "579a3c8376fb7cb94ed4f4377e4aff2d506c8c3a039a9fe2987dd024b9090263"
+    },
+    {
+      "path": ".gitignore",
+      "size": 122,
+      "sha256": "fc945c0eb7b340e52dd230d2e04615a65e9b7b62ce032d0d027b66e462062aa4"
+    },
+    {
+      "path": ".node-version",
+      "size": 3,
+      "sha256": "68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53"
+    },
+    {
+      "path": ".nvmrc",
+      "size": 3,
+      "sha256": "68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53"
+    },
+    {
+      "path": "LICENSE",
+      "size": 1083,
+      "sha256": "6528ae50fe10ed86670433af28d3f836bcecc037fa941fb60fcdcda726633862"
+    },
+    {
+      "path": "README.md",
+      "size": 3506,
+      "sha256": "0194509cccdee38c98e0b35c68b0267b4f16f43324c6b52f95697a7ffe9b2773"
+    },
+    {
+      "path": "api/analyze.ts",
+      "size": 68,
+      "sha256": "60af3c24a20a5474975285602152405545e45b23e766b25a8cf8764921779e2e"
+    },
+    {
+      "path": "api/health.ts",
+      "size": 68,
+      "sha256": "60af3c24a20a5474975285602152405545e45b23e766b25a8cf8764921779e2e"
+    },
+    {
+      "path": "api/rules.ts",
+      "size": 68,
+      "sha256": "60af3c24a20a5474975285602152405545e45b23e766b25a8cf8764921779e2e"
+    },
+    {
+      "path": "api/score.ts",
+      "size": 68,
+      "sha256": "60af3c24a20a5474975285602152405545e45b23e766b25a8cf8764921779e2e"
+    },
+    {
+      "path": "deploy/render-web.yaml",
+      "size": 312,
+      "sha256": "ec16933abe5754974d19cb10e0a6a61223abdb2843b4562aa9982eaf9cbb4fc5"
+    },
+    {
+      "path": "docs/API.md",
+      "size": 7076,
+      "sha256": "fcf1c8a0568ae05c89e50b1e1997d980b828e13ebc76b8a198e91ebfaf2ef96f"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "size": 3962,
+      "sha256": "3292fa659c48cf347ee75168da407ebf065f79709bdfc40b42f685ff6464afc0"
+    },
+    {
+      "path": "docs/RULES_AND_ENGINE.md",
+      "size": 4381,
+      "sha256": "c59bdfbab71551326b6651bce3f609d534606c6296af872e014300bb39a17945"
+    },
+    {
+      "path": "docs/VALIDATION.md",
+      "size": 2344,
+      "sha256": "a643ccb5ad6c5b522ecc4d2d5a643a5933459efc6d179f4115e1d949dd483550"
+    },
+    {
+      "path": "examples/analyze-request.json",
+      "size": 546,
+      "sha256": "ae630645b2e550995737c71cba0da742d728d9593ffff6c84d327d4a8b1b55e2"
+    },
+    {
+      "path": "examples/score-request.json",
+      "size": 295,
+      "sha256": "aab26459979b83e392863696c61f4252448eab416c2f4b1e31831e5ff4070d0e"
+    },
+    {
+      "path": "index.html",
+      "size": 517,
+      "sha256": "f671546cdd6eaa8926e15d8576bbf7dc139b3979e24bdfb05f6eae0665497ff8"
+    },
+    {
+      "path": "package-lock.json",
+      "size": 38324,
+      "sha256": "1a80b40a525c9fd4b9e76b40b18f2910857d4661ca288466c354ee704b4a5f28"
+    },
+    {
+      "path": "package.json",
+      "size": 801,
+      "sha256": "d1fcf2689a63e52d51c3a5e22f7f407052a2479259f3d8eedbe560024459b77d"
+    },
+    {
+      "path": "public/third-party-notices.txt",
+      "size": 1247,
+      "sha256": "e2e00d10a604ef45a7d7f988b74d402ac4770eb748d4350949cc59328216c957"
+    },
+    {
+      "path": "render.yaml",
+      "size": 312,
+      "sha256": "ec16933abe5754974d19cb10e0a6a61223abdb2843b4562aa9982eaf9cbb4fc5"
+    },
+    {
+      "path": "scripts/build-core.sh",
+      "size": 393,
+      "sha256": "fa9a525dde746d939485292d5cff001bfe792eb3eed49d7b56b2a2d8e01abe66"
+    },
+    {
+      "path": "server/api.ts",
+      "size": 3071,
+      "sha256": "b40d9e91a86e8741dd11c99476a1ad92724d43bbdbcab309fd031cfcd60d6615"
+    },
+    {
+      "path": "server/cors.ts",
+      "size": 815,
+      "sha256": "bbb8963793be599dd8f3087891e2a3022fe19e6fb3154467230a2dd9725aa685"
+    },
+    {
+      "path": "server/http.ts",
+      "size": 2391,
+      "sha256": "98ba043498a9e628cd2e9fabba6e063afc22d66ccb27a2258602a27dc8e3fb9d"
+    },
+    {
+      "path": "server/index.ts",
+      "size": 2008,
+      "sha256": "afa2a70e6305bdc7b67ac00e9d69ca61eae869fce64cfc8bc1a48704758cd409"
+    },
+    {
+      "path": "server/rooms.ts",
+      "size": 13530,
+      "sha256": "7671a11f0c34af67e69f1cfa1b197e4c1b4de5c7bc826f220ad1e5514a2d6aca"
+    },
+    {
+      "path": "server/static.ts",
+      "size": 2466,
+      "sha256": "743822134aedf265b47c842861eed8045068c2000336582c9360ddec506eee91"
+    },
+    {
+      "path": "server/store-d1.ts",
+      "size": 1355,
+      "sha256": "99b4e81c88d880ba68a85f97a57bb034a8a681f2cbddcc8bd1c48f46ef6a6026"
+    },
+    {
+      "path": "server/store-memory.ts",
+      "size": 606,
+      "sha256": "6b99cf21be5ac1bb503c451c65d6d84e3c81d36824d824bf10a466d583049978"
+    },
+    {
+      "path": "server/store-sqlite.ts",
+      "size": 1436,
+      "sha256": "5f14536de855fe96e944abf01196e578a717491ebbef6f9c58aa07cc93ab227b"
+    },
+    {
+      "path": "server/tsconfig.json",
+      "size": 187,
+      "sha256": "72a8bc06db9eba72d1754f8a26aa559a4c6aa7117008f25b7380da32c0e79d23"
+    },
+    {
+      "path": "server/validation.ts",
+      "size": 6331,
+      "sha256": "df1653379f7767fee3e06bcd2f9e0720970be962a2a9d462895e67d77d290573"
+    },
+    {
+      "path": "src/Tile.tsx",
+      "size": 3931,
+      "sha256": "98a1fdaa587adf59d887cd93e7f3bc1f6eb9cb6b9524bf9f1d17da2c8e532344"
+    },
+    {
+      "path": "src/engine/ai.ts",
+      "size": 8295,
+      "sha256": "b5cbecbdf0097eae09212da1175b14ed9374f98651e694dd6c2a3470b716f1dd"
+    },
+    {
+      "path": "src/engine/core.ts",
+      "size": 4285,
+      "sha256": "d6ac7e451d9aa91db70fbd154b8e046177122d86d3be5ad16aac0f90b52c0b03"
+    },
+    {
+      "path": "src/engine/game.ts",
+      "size": 19866,
+      "sha256": "ad9584ef183f632242b24fc1a27ac6fd2d53974a9ebc2e1349cd9069d3acbd5c"
+    },
+    {
+      "path": "src/engine/mcrcore.js",
+      "size": 93053,
+      "sha256": "ef19dec45e38eadb434bbf49ab6078256cd3472ed3e944dfcf047b5f9ba7dae6"
+    },
+    {
+      "path": "src/engine/rules.ts",
+      "size": 5269,
+      "sha256": "7572691967a2888443b342e9607c0a2111aedf953b9f10d8073d9af0b1d54805"
+    },
+    {
+      "path": "src/engine/types.ts",
+      "size": 3105,
+      "sha256": "c6e084d719d208559582631c9106608c6ff83ac43d590f36db186c0ae7a04209"
+    },
+    {
+      "path": "src/main.tsx",
+      "size": 51822,
+      "sha256": "1dccb899252bd209387158e05df7b0032609518935053940e49197589422e6de"
+    },
+    {
+      "path": "src/online/RoomPanel.tsx",
+      "size": 3429,
+      "sha256": "f2b388bed24eb9c3cdfd29c57784213f62f4bec7711bd69ffbbe7311e2ac7c21"
+    },
+    {
+      "path": "src/online/protocol.ts",
+      "size": 780,
+      "sha256": "eb1244c6a8f4a806abab29f6fa22e203727359c2c3a562aba7dd4c5601a16190"
+    },
+    {
+      "path": "src/online/useRoom.ts",
+      "size": 4576,
+      "sha256": "64f7085b272782638fbe9404a54db832491d01459f8330639606696721133193"
+    },
+    {
+      "path": "src/style.css",
+      "size": 26151,
+      "sha256": "97bfbbac20ba4180512fd805733d851ec8b17db2992e3d6e9a9012035de83922"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "size": 38,
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "path": "tests/engine.test.ts",
+      "size": 13294,
+      "sha256": "5206f58f63e9ec23d099e7bbb96b2b708c8482a37b6cbfdbcf628f37306afc4a"
+    },
+    {
+      "path": "tests/mcr-corpus.json",
+      "size": 23014,
+      "sha256": "f68c5da4b5ede926dde0e105ed7c16c147941260daceb1a9f1467d16f393b9d7"
+    },
+    {
+      "path": "tests/rooms.test.ts",
+      "size": 10342,
+      "sha256": "4917f4011597cc902f6096aa8ee6885024fa05b57f551b7532eb8c68ae10aef6"
+    },
+    {
+      "path": "tests/server.test.ts",
+      "size": 7190,
+      "sha256": "1ce060fee0954ac8fc373e063643614f87e063a17b686bd3430f6d5c229413cb"
+    },
+    {
+      "path": "tsconfig.json",
+      "size": 352,
+      "sha256": "bd528141fd3623e99e3fbd2c3d01bd0212bba7a6ce718892ab9a5f89945f8eec"
+    },
+    {
+      "path": "vendor/SOURCE.md",
+      "size": 330,
+      "sha256": "b13817473292213baac1d7866392230f73bf881a11419d3253b09b9c69c57896"
+    },
+    {
+      "path": "vendor/bridge.cpp",
+      "size": 2630,
+      "sha256": "76f7163d2a07dc80679b9b41b070e51910d4872129b0cee9a24740a6d4a804ba"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/LICENSE",
+      "size": 1096,
+      "sha256": "83a3f5f0574cb5a489b629c1caf9c63c6c7fbab6d4d4a934f726fd11bf1fe436"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/README.md",
+      "size": 4563,
+      "sha256": "d97d75d3d99e897a7ba9ec016ab78de4aaf3766ed9d0e0daa734b246116bf65e"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/fan_calculator.cpp",
+      "size": 88872,
+      "sha256": "eb034fa0664a4cddb0f6e4ec17cc06ce8e60efebcdf91e5da56db3a1f43f1d95"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/fan_calculator.h",
+      "size": 15234,
+      "sha256": "4c56f1cdd48bcd7288163909543c6fb13f5fd3e737f9b601f596173aae323df2"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/shanten.cpp",
+      "size": 44203,
+      "sha256": "5c28ebde065b94dab8b22ea63d376b8eed09de44e6fcfc94c0883cf5e411b601"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/shanten.h",
+      "size": 9818,
+      "sha256": "9c86f66763f68a8bf97e9a75a6c44d4b2fc73f1cd5adf65a9e351f542fe23968"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/stringify.cpp",
+      "size": 13153,
+      "sha256": "3e8cde82ff648a974ef02092409ae498676d5a168309d1a653399dc836077f4e"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/stringify.h",
+      "size": 5159,
+      "sha256": "889afc14814e2fdea9f6acd69f703052ca993d9207e6ac1a60d14e25b059c901"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/tile.h",
+      "size": 18647,
+      "sha256": "fdeba8a52b895dd1c904a4558649743a2fab5e432bb2eee16ccf99420bc21cb0"
+    },
+    {
+      "path": "vendor/mahjong-algorithm/unit_test.cpp",
+      "size": 30328,
+      "sha256": "8783784a0f9574c80713870a75b33a292a3485478778b20256430a4f829f75c1"
+    },
+    {
+      "path": "vercel.json",
+      "size": 188,
+      "sha256": "343372e106bde257d519cb05e7253bb337bdc0d949f15d4b31772b761bdfe5af"
+    },
+    {
+      "path": "vite.config.ts",
+      "size": 241,
+      "sha256": "1911ab9a80cb8fd190d62c7ee3b6b9d69f9437da8e9bbed464cd3c4aa03ff526"
+    }
+  ]
+}
