@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { EngineBootstrap } from "./EngineBootstrap";
 import {
-  initCore,
   suit,
   tileName,
   evaluate,
@@ -422,9 +422,7 @@ function App() {
   const online = useRoom();
   const [roomsOpen, setRoomsOpen] = useState(!!online.session || new URL(location.href).searchParams.has("room"));
   const [createName, setCreateName] = useState<string | null>(null);
-  const [ready, setReady] = useState(false),
-    [failure, setFailure] = useState(""),
-    [localGame, setGame] = useState<Game | null>(validInitial);
+  const [localGame, setGame] = useState<Game | null>(validInitial);
   const game = online.session ? online.room?.game ?? null : localGame;
   const [localSession, setLocalSession] = useState(0);
   const [config, setConfig] = useState<Config>(
@@ -446,11 +444,6 @@ function App() {
   const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
   const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound, prefs.voiceChoice, prefs.voiceRate);
   const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
-  useEffect(() => {
-    initCore()
-      .then(() => setReady(true))
-      .catch((e) => setFailure(String(e)));
-  }, []);
   useEffect(() => {
     if (game && !online.session && game.seed !== 0)
       try {
@@ -496,7 +489,6 @@ function App() {
   };
   const auto =
     !online.session &&
-    ready &&
     game &&
     !paused &&
     !setup &&
@@ -554,14 +546,13 @@ function App() {
     (!online.session || (!!online.room && !online.room.seats[0].autoplay && !online.busy));
   const analysis = useMemo(
     () =>
-      ready && game && ourTurn && prefs.hints && !replay
+      game && ourTurn && prefs.hints && !replay
         ? online.session ? online.advice : advise(publicView(game, 0), { style: prefs.assistantStyle, difficulty: "advanced" })
         : [],
-    [ready, game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
+    [game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
   );
   const waiting = useMemo(() => {
     if (
-      !ready ||
       !game ||
       !prefs.hints ||
       game.players[0].won ||
@@ -584,7 +575,7 @@ function App() {
         )
         .map((tile) => ({ tile, left: Math.max(0, 4 - k[tile]) })),
     };
-  }, [ready, game, prefs.hints]);
+  }, [game, prefs.hints]);
   const playerActions = online.session ? online.room?.actions ?? [] : game ? ownActions(game, 0) : [];
   const claim =
     online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
@@ -665,22 +656,6 @@ function App() {
     setReplayIndex(0);
     setReplayPlay(false);
   };
-  if (failure)
-    return (
-      <div className="loading">
-        <h2>规则引擎加载失败</h2>
-        <p>{failure}</p>
-        <button onClick={() => location.reload()}>重新加载</button>
-      </div>
-    );
-  if (!ready)
-    return (
-      <div className="loading">
-        <div className="brand-mark">一</div>
-        <h2>一桌麻将</h2>
-        <p>正在准备牌桌与规则引擎…</p>
-      </div>
-    );
   const title = game?.config.mode === "mcr" ? "国标麻将" : "四川麻将";
   let status = "等待开始";
   if (game) {
@@ -1424,6 +1399,6 @@ function App() {
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <EngineBootstrap><App /></EngineBootstrap>
   </React.StrictMode>,
 );
