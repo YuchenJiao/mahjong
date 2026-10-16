@@ -1,9 +1,9 @@
 {
   "project": "quiet-mahjong",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "rootDirectory": "quiet-mahjong",
   "validated": {
-    "tests": 54,
+    "tests": 61,
     "mcrRegressionCases": 214,
     "localCompleteGames": 32,
     "onlineCompleteGames": 14,
@@ -34,7 +34,13 @@
     "transientAnimationCancelRegression": true,
     "chineseVoiceSelectionRegression": true,
     "nativeFemaleVoiceAvailableOnEveryDevice": false,
-    "fixedFemaleVoiceRecordingsIncluded": false
+    "fixedFemaleVoiceRecordingsIncluded": false,
+    "originalUndefinedCcallReproduced": true,
+    "coldClientEntryRegressionJsdom": true,
+    "coldClientEntryHintsOnAndOff": true,
+    "strictModeColdRestoreRegression": true,
+    "coreInitializationRetry": true,
+    "savedGamePreservedDuringStartup": true
   },
   "files": [
     {
@@ -74,8 +80,8 @@
     },
     {
       "path": "README.md",
-      "size": 6851,
-      "sha256": "7c67fe4f915a04f246468b739a74636cb946a0a587eeed5ee83605313b43e254"
+      "size": 7860,
+      "sha256": "456c7cb998da0534d48a0e50e5051d531a362a012796c69266a14b701f2691c5"
     },
     {
       "path": "api/analyze.ts",
@@ -133,14 +139,19 @@
       "sha256": "a5d59ec879d7ffcc87ed2a6d8db6ed80e8cabe112ec8e37d4c7e65f4b5697d95"
     },
     {
+      "path": "docs/UPGRADE_2.2.2.md",
+      "size": 2100,
+      "sha256": "83034b41f0658120780b3eeda51fc1922ffc6db406333f0f056fbcde89f1cdc9"
+    },
+    {
       "path": "docs/UPGRADE_2.2.md",
       "size": 1936,
       "sha256": "afce7be9476b83f12fe596b6eaeb0ad9f71c140b46c8a96ce12b877a76ba8edd"
     },
     {
       "path": "docs/VALIDATION.md",
-      "size": 3894,
-      "sha256": "0e4e74992837b607f49130579bada47e7afbe5540554361585f9a4b43fb8b71c"
+      "size": 4917,
+      "sha256": "9758f3269ced4e52f86b7acfbf3b9be2bc002f3d3816516508b60fd7e104c378"
     },
     {
       "path": "docs/upgrade-2.1.patch",
@@ -151,6 +162,11 @@
       "path": "docs/upgrade-2.2.1.patch",
       "size": 33773,
       "sha256": "f3d6fa3b1b3df597b435b1b373b21580fcbc521c712ef4a0980a209c639aba6a"
+    },
+    {
+      "path": "docs/upgrade-2.2.2.patch",
+      "size": 49976,
+      "sha256": "f2d742671dfa992251b251f56667056c9f31c94eeaf2aff6f974f83c00d578d4"
     },
     {
       "path": "docs/upgrade-2.2.patch",
@@ -174,13 +190,13 @@
     },
     {
       "path": "package-lock.json",
-      "size": 38324,
-      "sha256": "edfc57c9cb80c8a6f76c0dfb85df0989fc74c16a9aa5e49e5ccff81d08185c0b"
+      "size": 60773,
+      "sha256": "99f59a093f256a417502b9414b9a8c56ff2bdd61cb67ff5984e5d3b4da0529f9"
     },
     {
       "path": "package.json",
-      "size": 801,
-      "sha256": "89ee280879afce1387b3d81051fadcfe1d2b1752410be592d5ecb6f6d969325e"
+      "size": 882,
+      "sha256": "a2d0b5777716a9916d2bf42e94076ed6dddd077d5b3330da277c14ed77af7fed"
     },
     {
       "path": "public/third-party-notices.txt",
@@ -199,8 +215,8 @@
     },
     {
       "path": "server/api.ts",
-      "size": 3258,
-      "sha256": "55b3b97178344836185480dbedd8f96833272bf83cd27232c5f24892617dbfe0"
+      "size": 3208,
+      "sha256": "e25cddf2c091a1eede1f6b1e3a394c937b183d05c5af5367004e08bc75f603d3"
     },
     {
       "path": "server/cors.ts",
@@ -253,6 +269,11 @@
       "sha256": "89d1280d0618ab2323489aadbff3b519ffb64419f62ae2da192197880cfd6d06"
     },
     {
+      "path": "src/EngineBootstrap.tsx",
+      "size": 1557,
+      "sha256": "6b7c8a2c6bb4d32ff2448b6cfbe1ef186f3c9f129edbfe8653762bc7afc17ebd"
+    },
+    {
       "path": "src/Tile.tsx",
       "size": 4003,
       "sha256": "c7b97312e21362aebd58bffe226d0874c4d38f6930050d112ba4db57725ca7f0"
@@ -264,8 +285,8 @@
     },
     {
       "path": "src/engine/core.ts",
-      "size": 4285,
-      "sha256": "d6ac7e451d9aa91db70fbd154b8e046177122d86d3be5ad16aac0f90b52c0b03"
+      "size": 4892,
+      "sha256": "bb57e5fc31fe9c44e505a8c2916de18f7c650f9838fb93121c9782f68c21945e"
     },
     {
       "path": "src/engine/game.ts",
@@ -309,8 +330,8 @@
     },
     {
       "path": "src/main.tsx",
-      "size": 58655,
-      "sha256": "5b273b16a1e3e3fd256fa1ead5a384a2944125ead2d3f395d403b612f24f40c3"
+      "size": 58047,
+      "sha256": "90b0a48bee0c8b032a16bf4ddbbe8752c472b04630266beaf6b6a41e6d085982"
     },
     {
       "path": "src/online/RoomPanel.tsx",
@@ -353,6 +374,11 @@
       "sha256": "5188e0b633d55acbc3c6a43181376fbb3f32b34942ec9a5024e71b289b32b97f"
     },
     {
+      "path": "tests/client-startup.test.ts",
+      "size": 3317,
+      "sha256": "bd0861372041f6a6b957b2972c1a6b1a657e540b30c7d428fb5bc213e75daad3"
+    },
+    {
       "path": "tests/display-feedback.test.ts",
       "size": 1788,
       "sha256": "ad3f561a13683d722e78062e212354bb6f05eb2b81ef647c6bf0a07100168633"
@@ -381,6 +407,11 @@
       "path": "tests/server.test.ts",
       "size": 7190,
       "sha256": "1ce060fee0954ac8fc373e063643614f87e063a17b686bd3430f6d5c229413cb"
+    },
+    {
+      "path": "tests/startup.test.ts",
+      "size": 5699,
+      "sha256": "5123e89beaec442ed8ef6b26cbd7a4eb9b4f8a4ca00088640e550c65c3ae8dfa"
     },
     {
       "path": "tsconfig.json",

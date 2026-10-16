@@ -1,0 +1,1229 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# 一桌麻将 · 在线版 2.2.1
++# 一桌麻将 · 在线版 2.2.2
+ 
+ React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+@@ -26,6 +26,17 @@
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
+ 
++## 2.2.2修复国标存档刷新崩溃
++
++旧版恢复国标行牌存档时，首轮渲染先执行胡牌判断，随后才进入加载页面；此时WebAssembly计分模块尚未就绪，触发`Cannot read properties of undefined (reading 'ccall')`。
++
++- 启动加载器放在整个牌桌外层，计分模块完成初始化后才挂载牌桌、恢复计算和联机连接。
++- 初始化失败显示可重试页面，保留原有存档；失败的初始化Promise不再永久缓存。
++- 引擎调用增加就绪检查，尚未就绪时给出明确错误，不再读取undefined上的ccall。
++- 新增真实前端入口的DOM回归：延迟实际WASM初始化，分别在助手开启和关闭时恢复国标存档；旧2.2.1入口均复现错误，新版均恢复14张手牌。
++
++已有2.2.1仓库见[2.2.2升级说明](docs/UPGRADE_2.2.2.md)。数据库、房间协议和浏览器存档格式不变，无需清空存档。jsdom与esbuild仅用于开发测试，不增加线上服务依赖。
++
+ ## 2.2.1显示修复与女声音色
+ 
+ - 中央只保留一个固定提示节点，最新牌也复用节点，连续出牌不再通过改变key反复重建。提示区固定88像素高并裁剪溢出，动作切换取消上一段动画，减少旧动画残留与纵向堆叠。
+@@ -43,7 +54,7 @@
+ - 出牌落位、摸牌入手、吃碰杠胡有动画反馈；系统开启“减少动态效果”时自动关闭动画。
+ - 新增独立“语音”开关与“试听语音”。真人和电脑确认出牌后播报牌名，实际成立的吃碰杠胡播报动作。
+ - 播报仅使用公开事件，不播报摸牌牌面或暗杠牌面；刷新、反复轮询、回放不重复朗读历史。快速模式队列优先保留动作与胡牌，淘汰过时的弃牌播报。
+-- 语音使用浏览器及系统的中文声音，优先本地中文声音；首次点击操作或试听后启用，不使用付费语音服务。实际发音与可用声音取决于设备。
++- 语音使用浏览器及系统的中文声音，优先可用的自然／增强中文女声；首次点击操作或试听后启用，不使用付费语音服务。实际发音与可用声音取决于设备。
+ 
+ 已有2.1仓库可按[2.2升级步骤](docs/UPGRADE_2.2.md)更新；联机的前后端须一起更新，旧存档和SQLite不需要迁移。
+ 
+diff --git a/docs/UPGRADE_2.2.2.md b/docs/UPGRADE_2.2.2.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.2.2.md
+@@ -0,0 +1,28 @@
++# 从2.2.1升级到2.2.2
++
++修复恢复国标牌局／刷新时的`Cannot read properties of undefined (reading 'ccall')`。
++
++旧版`App`在返回加载页之前已执行`ownActions → winScore → rawScore → core.ccall`，而真正的引擎初始化在首次渲染完成后的effect中才开始。国标行牌存档触发首次渲染异常，初始化effect因此无法执行，页面崩溃。这次将引擎加载器移到整个牌桌外层，就绪后才挂载牌桌；不是通过删存档回避问题。
++
++推荐将完整源码包中的`quiet-mahjong/`合并到自己的仓库，保留`.git`、`.env`、`.data`及部署设置。也可把`docs/upgrade-2.2.2.patch`放到原始2.2.1仓库根目录：
++
++```bash
++git apply --check docs/upgrade-2.2.2.patch
++git apply docs/upgrade-2.2.2.patch
++npm ci
++npm test
++npm run build
++git add .
++git commit -m "Initialize Mahjong engine before restoring the table"
++git push
++```
++
++完整源码合并和应用补丁二选一，不要覆盖新源码后再次应用旧补丁。有自定义代码且检查报冲突时，请按差异合并。
++
++Render单服务：推送连接的仓库后重新部署；如果未自动部署，可在Render执行Deploy latest commit。完成后正常刷新页面即可，不需要清空浏览器数据或删除存档。分开部署时至少更新前端；后端同时包含初始化失败后可重试的调整，建议一起更新。API和数据库结构不变。
++
++新增jsdom、esbuild及类型声明仅为开发／测试依赖，`npm ci`会按锁文件安装。运行`npm test`时会执行完整前端入口的DOM回归，包括延迟WASM、助手开关、StrictMode、失败重试和存档保留。生产构建不会打包这些测试工具。
++
++底层初始化失败时会显示“重试加载”按钮，重试不会删除保存的牌局。低层计分API在未就绪时抛出`CoreNotReadyError`，正常调用者仍应先等待`initCore()`。
++
++本次测试不等同于Chrome/Safari实机或手机视觉／语音验证。没有连接或修改你的Render、GitHub等外部账户；重新部署后此修复才会出现在现有网址。
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,11 +1,15 @@
+-# 交付验证记录 · 2.2.1
++# 交付验证记录 · 2.2.2
+ 
+-日期：2026-10-12。
++日期：2026-10-16。
+ 
+ | 检查 | 结果 |
+ |---|---|
+ | TypeScript前后端检查、Vite生产构建 | 通过 |
+-| 全部自动测试 | 54项通过，0失败 |
++| 全部自动测试 | 61项通过，0失败 |
++| 冷启动前端入口 | 同一DOM回归在旧2.2.1入口复现undefined.ccall；新版实际入口在WASM延迟、助手开／关两种情况下均先显示加载，再恢复国标14张手牌 |
++| 严格模式与初始化 | React StrictMode延迟恢复、并发初始化共用一次尝试、失败后可重试、卸载后迟到结果忽略均通过 |
++| 初始化异常与存档 | 失败页不挂载牌桌，点击重试后恢复；加载前及失败期间存档不变，无删除或清空操作 |
++| 提前调用防护 | ownActions、rawScore、evaluate、fanReference、scoreString尚未就绪时抛出明确的CoreNotReadyError |
+ | 国标算番回归 | 214个用例通过 |
+ | 本地完整对局 | 原32局均结束，收支零和 |
+ | 1–4人房间 | 川麻／国标各1、2、3、4个独立会话，共8局完成并续局 |
+@@ -26,7 +30,7 @@
+ | 音色偏好 | 手动选定音色、声音缺失回退、语速范围与原生音高通过模拟接口验证 |
+ | 语音控制器 | 模拟浏览器声音接口验证中文牌名、中文声音选择、多响顺序、短队列、静音清理、异常降级 |
+ | 播报去重 | 首次连接不读历史，重复与迟到轮询不重复读，房间切换、回放不补播 |
+-| 实际Node HTTP | 本版健康2.2.1及生产HTML通过；公开出牌事件、来客座位旋转、对手手牌隐藏已在2.2真实HTTP验证并由本版完整回归覆盖；既有难度与助手行为另由完整回归覆盖 |
++| 实际Node HTTP | 本版健康2.2.2、首次冷启动规则请求及生产HTML通过；公开出牌事件、来客座位旋转、对手手牌隐藏已在2.2真实HTTP验证并由本版完整回归覆盖；既有难度与助手行为另由完整回归覆盖 |
+ 
+ ## 边界
+ 
+@@ -34,6 +38,8 @@
+ 
+ 对手听牌与风险是公开信息上的启发式估计，不是统计校准概率；具体牌例改善不等于已证明总体胜率提升。
+ 
+-原Site接口返回“项目不存在”，没有发布到旧网址。也没有登录或修改用户自己创建的GitHub、Render、Vercel、Pages账户。本次交付完整源码与从原2.0、2.1包升级的补丁，部署需由自己的仓库发布。
++此前原ChatGPT Site接口返回“项目不存在”。本版依据用户自部署Render页面的报错截图修复，没有登录或修改其GitHub、Render、Vercel、Pages账户。交付完整源码及历版升级补丁，需推送自己的仓库并重新部署。
+ 
+ 本次依据用户截图修复中央重复提示，具体iOS触发机制尚未复现。新结构复用稳定节点，并固定提示槽高度和溢出边界；服务端渲染和模拟动画测试不能证明Safari图形合成问题已经实机消失。没有生成固定女声录音，声音自然程度仍取决于设备提供的实际音色。
++
++本版启动回归在Node.js + jsdom DOM环境运行真实前端入口和实际WebAssembly引擎，未使用真实Chrome/Safari浏览器，不验证像素布局、GPU合成或系统扬声器。延迟加载通过拦截WASM实例化控制，助手所需的structuredClone由Node同名API提供。原始错误复现和修改后回归均已执行。
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,21 +1,24 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.2.1",
++  "version": "2.2.2",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.2.1",
++      "version": "2.2.2",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+         "tsx": "^4.20.0"
+       },
+       "devDependencies": {
++        "@types/jsdom": "^30.0.0",
+         "@types/node": "^24.0.0",
+         "@types/react": "^19.2.0",
+         "@types/react-dom": "^19.2.0",
++        "esbuild": "^0.28.2",
++        "jsdom": "^27.4.0",
+         "typescript": "^5.9.3",
+         "vite": "^7.1.0"
+       },
+@@ -23,6 +26,188 @@
+         "node": ">=24.0.0"
+       }
+     },
++    "node_modules/@acemir/cssom": {
++      "version": "0.9.32",
++      "resolved": "https://registry.npmjs.org/@acemir/cssom/-/cssom-0.9.32.tgz",
++      "integrity": "sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@asamuzakjp/css-color": {
++      "version": "4.1.2",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/css-color/-/css-color-4.1.2.tgz",
++      "integrity": "sha512-NfBUvBaYgKIuq6E/RBLY1m0IohzNHAYyaJGuTK79Z23uNwmz2jl1mPsC5ZxCCxylinKhT1Amn5oNTlx1wN8cQg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/css-calc": "^3.0.0",
++        "@csstools/css-color-parser": "^4.0.1",
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0",
++        "lru-cache": "^11.2.5"
++      }
++    },
++    "node_modules/@asamuzakjp/dom-selector": {
++      "version": "6.8.1",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/dom-selector/-/dom-selector-6.8.1.tgz",
++      "integrity": "sha512-MvRz1nCqW0fsy8Qz4dnLIvhOlMzqDVBabZx6lH+YywFDdjXhMY37SmpV1XFX3JzG5GWHn63j6HX6QPr3lZXHvQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@asamuzakjp/nwsapi": "^2.3.9",
++        "bidi-js": "^1.0.3",
++        "css-tree": "^3.1.0",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.2.6"
++      }
++    },
++    "node_modules/@asamuzakjp/nwsapi": {
++      "version": "2.3.9",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/nwsapi/-/nwsapi-2.3.9.tgz",
++      "integrity": "sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@csstools/color-helpers": {
++      "version": "6.1.2",
++      "resolved": "https://registry.npmjs.org/@csstools/color-helpers/-/color-helpers-6.1.2.tgz",
++      "integrity": "sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "engines": {
++        "node": ">=20.19.0"
++      }
++    },
++    "node_modules/@csstools/css-calc": {
++      "version": "3.4.3",
++      "resolved": "https://registry.npmjs.org/@csstools/css-calc/-/css-calc-3.4.3.tgz",
++      "integrity": "sha512-iex20d8CHVkyvg6B7UKV7uHnI2Bqo9g+EFfT9E0y+GvTvhZ/DwONJ+9aKb1dlqm0ZiGsL5RXjp0fCoJYnkeDjA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.2",
++        "@csstools/css-tokenizer": "^4.0.2"
++      }
++    },
++    "node_modules/@csstools/css-color-parser": {
++      "version": "4.2.6",
++      "resolved": "https://registry.npmjs.org/@csstools/css-color-parser/-/css-color-parser-4.2.6.tgz",
++      "integrity": "sha512-iiPQ3iRWwnJkeEn6RIu6SJPr7hYrLz6XZ9s/QZl+2/LI5KQVjpl2fdmDSZKuD4xP6GMmMPgHFFXg6k1Wkz0Trg==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/color-helpers": "^6.1.2",
++        "@csstools/css-calc": "^3.4.3"
++      },
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.2",
++        "@csstools/css-tokenizer": "^4.0.2"
++      }
++    },
++    "node_modules/@csstools/css-parser-algorithms": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/@csstools/css-parser-algorithms/-/css-parser-algorithms-4.0.2.tgz",
++      "integrity": "sha512-40cSKyMvK+tq4qz6Awrlye2WGuOKt3FwPgtGg6KTfbHOWNw+Rk1rzbAtZnZ6IBhsY491HLRnDXwoyBAijmmILA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-tokenizer": "^4.0.2"
++      }
++    },
++    "node_modules/@csstools/css-syntax-patches-for-csstree": {
++      "version": "1.1.15",
++      "resolved": "https://registry.npmjs.org/@csstools/css-syntax-patches-for-csstree/-/css-syntax-patches-for-csstree-1.1.15.tgz",
++      "integrity": "sha512-J0u7HkVl2nzSlhsiTOp4AmwcUQ3D+mGEEKfBy/7To5/y7F2OHwyLrXfrhR0SMgr4p5Lo+eaMVSeai24zUcBIxA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "peerDependencies": {
++        "css-tree": "^3.2.1"
++      },
++      "peerDependenciesMeta": {
++        "css-tree": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@csstools/css-tokenizer": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/@csstools/css-tokenizer/-/css-tokenizer-4.0.2.tgz",
++      "integrity": "sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      }
++    },
+     "node_modules/@esbuild/aix-ppc64": {
+       "version": "0.28.2",
+       "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
+@@ -437,6 +622,24 @@
+       ],
+       "engines": {
+         "node": ">=18"
++      }
++    },
++    "node_modules/@exodus/bytes": {
++      "version": "1.16.0",
++      "resolved": "https://registry.npmjs.org/@exodus/bytes/-/bytes-1.16.0.tgz",
++      "integrity": "sha512-IcpW84uEn3N7ETtNZMlxKhfl6Pec8rUNGOTBtWbK1FKhJxIFAptZyVrvVRVBimAJxJCgc3PxepxkdWWG4DVzfA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      },
++      "peerDependencies": {
++        "@noble/hashes": "^1.8.0 || ^2.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@noble/hashes": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/@napi-rs/lzma-linux-x64-gnu": {
+@@ -813,6 +1016,26 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@types/jsdom": {
++      "version": "30.0.0",
++      "resolved": "https://registry.npmjs.org/@types/jsdom/-/jsdom-30.0.0.tgz",
++      "integrity": "sha512-uAHGxujGE0cDaKGdK28zgDotFtNA7MKq5DXl8LrfdxdCI8VHcg15oJz+amHTChPNI5JpgEPQWc2xFdrw3em/nQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*",
++        "@types/tough-cookie": "*",
++        "parse5": "^8.0.0",
++        "undici-types": "^8.9.0"
++      }
++    },
++    "node_modules/@types/jsdom/node_modules/undici-types": {
++      "version": "8.12.2",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-8.12.2.tgz",
++      "integrity": "sha512-VoMeD2O0KdHhcn+oPqOrpivN+7aDOklVSwOLD7JNjbzV1CboAFek9IFOXnreoufTUtAsCsOK0iETiERPNR/fDA==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/node": {
+       "version": "24.19.2",
+       "resolved": "https://registry.npmjs.org/@types/node/-/node-24.19.2.tgz",
+@@ -843,12 +1066,131 @@
+         "@types/react": "^19.3.0"
+       }
+     },
++    "node_modules/@types/tough-cookie": {
++      "version": "4.0.5",
++      "resolved": "https://registry.npmjs.org/@types/tough-cookie/-/tough-cookie-4.0.5.tgz",
++      "integrity": "sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/agent-base": {
++      "version": "7.1.4",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
++      "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/bidi-js": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/bidi-js/-/bidi-js-1.1.0.tgz",
++      "integrity": "sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "require-from-string": "^2.0.2"
++      }
++    },
++    "node_modules/css-tree": {
++      "version": "3.2.1",
++      "resolved": "https://registry.npmjs.org/css-tree/-/css-tree-3.2.1.tgz",
++      "integrity": "sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "mdn-data": "2.27.1",
++        "source-map-js": "^1.2.1"
++      },
++      "engines": {
++        "node": "^10 || ^12.20.0 || ^14.13.0 || >=15.0.0"
++      }
++    },
++    "node_modules/cssstyle": {
++      "version": "5.3.7",
++      "resolved": "https://registry.npmjs.org/cssstyle/-/cssstyle-5.3.7.tgz",
++      "integrity": "sha512-7D2EPVltRrsTkhpQmksIu+LxeWAIEk6wRDMJ1qljlv+CKHJM+cJLlfhWIzNA44eAsHXSNe3+vO6DW1yCYx8SuQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@asamuzakjp/css-color": "^4.1.1",
++        "@csstools/css-syntax-patches-for-csstree": "^1.0.21",
++        "css-tree": "^3.1.0",
++        "lru-cache": "^11.2.4"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
+     "node_modules/csstype": {
+       "version": "3.2.3",
+       "resolved": "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz",
+       "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==",
+       "dev": true,
+       "license": "MIT"
++    },
++    "node_modules/data-urls": {
++      "version": "6.0.1",
++      "resolved": "https://registry.npmjs.org/data-urls/-/data-urls-6.0.1.tgz",
++      "integrity": "sha512-euIQENZg6x8mj3fO6o9+fOW8MimUI4PpD/fZBhJfeioZVy9TUpM4UY7KjQNVZFlqwJ0UdzRDzkycB997HEq1BQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^15.1.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/data-urls/node_modules/whatwg-mimetype": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-5.0.0.tgz",
++      "integrity": "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/debug": {
++      "version": "4.4.3",
++      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
++      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "ms": "^2.1.3"
++      },
++      "engines": {
++        "node": ">=6.0"
++      },
++      "peerDependenciesMeta": {
++        "supports-color": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/decimal.js": {
++      "version": "10.6.0",
++      "resolved": "https://registry.npmjs.org/decimal.js/-/decimal.js-10.6.0.tgz",
++      "integrity": "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/entities": {
++      "version": "8.1.0",
++      "resolved": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
++      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "funding": {
++        "url": "https://github.com/fb55/entities?sponsor=1"
++      }
+     },
+     "node_modules/esbuild": {
+       "version": "0.28.2",
+@@ -923,6 +1265,118 @@
+         "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+       }
+     },
++    "node_modules/html-encoding-sniffer": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-6.0.0.tgz",
++      "integrity": "sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.6.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
++    "node_modules/http-proxy-agent": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/http-proxy-agent/-/http-proxy-agent-7.0.2.tgz",
++      "integrity": "sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "^7.1.0",
++        "debug": "^4.3.4"
++      },
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/https-proxy-agent": {
++      "version": "7.0.6",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz",
++      "integrity": "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "^7.1.2",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/is-potential-custom-element-name": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz",
++      "integrity": "sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/jsdom": {
++      "version": "27.4.0",
++      "resolved": "https://registry.npmjs.org/jsdom/-/jsdom-27.4.0.tgz",
++      "integrity": "sha512-mjzqwWRD9Y1J1KUi7W97Gja1bwOOM5Ug0EZ6UDK3xS7j7mndrkwozHtSblfomlzyB4NepioNt+B2sOSzczVgtQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@acemir/cssom": "^0.9.28",
++        "@asamuzakjp/dom-selector": "^6.7.6",
++        "@exodus/bytes": "^1.6.0",
++        "cssstyle": "^5.3.4",
++        "data-urls": "^6.0.0",
++        "decimal.js": "^10.6.0",
++        "html-encoding-sniffer": "^6.0.0",
++        "http-proxy-agent": "^7.0.2",
++        "https-proxy-agent": "^7.0.6",
++        "is-potential-custom-element-name": "^1.0.1",
++        "parse5": "^8.0.0",
++        "saxes": "^6.0.0",
++        "symbol-tree": "^3.2.4",
++        "tough-cookie": "^6.0.0",
++        "w3c-xmlserializer": "^5.0.0",
++        "webidl-conversions": "^8.0.0",
++        "whatwg-mimetype": "^4.0.0",
++        "whatwg-url": "^15.1.0",
++        "ws": "^8.18.3",
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      },
++      "peerDependencies": {
++        "canvas": "^3.0.0"
++      },
++      "peerDependenciesMeta": {
++        "canvas": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/lru-cache": {
++      "version": "11.5.3",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.3.tgz",
++      "integrity": "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/mdn-data": {
++      "version": "2.27.1",
++      "resolved": "https://registry.npmjs.org/mdn-data/-/mdn-data-2.27.1.tgz",
++      "integrity": "sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==",
++      "dev": true,
++      "license": "CC0-1.0"
++    },
++    "node_modules/ms": {
++      "version": "2.1.3",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/nanoid": {
+       "version": "3.3.20",
+       "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.20.tgz",
+@@ -940,6 +1394,19 @@
+       },
+       "engines": {
+         "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
++      }
++    },
++    "node_modules/parse5": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/parse5/-/parse5-8.0.1.tgz",
++      "integrity": "sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "entities": "^8.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/inikulin/parse5?sponsor=1"
+       }
+     },
+     "node_modules/picocolors": {
+@@ -991,6 +1458,16 @@
+         "node": "^10 || ^12 || >=14"
+       }
+     },
++    "node_modules/punycode": {
++      "version": "2.3.1",
++      "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
++      "integrity": "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/react": {
+       "version": "19.3.0",
+       "resolved": "https://registry.npmjs.org/react/-/react-19.3.0.tgz",
+@@ -1010,6 +1487,16 @@
+       },
+       "peerDependencies": {
+         "react": "^19.3.0"
++      }
++    },
++    "node_modules/require-from-string": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
++      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
+       }
+     },
+     "node_modules/rollup": {
+@@ -1058,6 +1545,19 @@
+         "fsevents": "~2.3.2"
+       }
+     },
++    "node_modules/saxes": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz",
++      "integrity": "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "xmlchars": "^2.2.0"
++      },
++      "engines": {
++        "node": ">=v12.22.7"
++      }
++    },
+     "node_modules/scheduler": {
+       "version": "0.28.0",
+       "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.28.0.tgz",
+@@ -1074,6 +1574,13 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/symbol-tree": {
++      "version": "3.2.4",
++      "resolved": "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz",
++      "integrity": "sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/tinyglobby": {
+       "version": "0.2.17",
+       "resolved": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+@@ -1089,6 +1596,52 @@
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/SuperchupuDev"
++      }
++    },
++    "node_modules/tldts": {
++      "version": "7.4.18",
++      "resolved": "https://registry.npmjs.org/tldts/-/tldts-7.4.18.tgz",
++      "integrity": "sha512-somxA8xKAUzlAxl0TX/jMSYIbRNFIVGnI96pVGJPeMc5BsHmfVXn6mOJT6U++ELnl04eGfzpfcEuZe8WiASkXg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tldts-core": "^7.4.18"
++      },
++      "bin": {
++        "tldts": "bin/cli.js"
++      }
++    },
++    "node_modules/tldts-core": {
++      "version": "7.4.18",
++      "resolved": "https://registry.npmjs.org/tldts-core/-/tldts-core-7.4.18.tgz",
++      "integrity": "sha512-KI2PKvCmvQI/xD6ypPqkU0i7oxNXR/O58RLRaHR4svsgVUQ2JE/XC8BtMbG6PSehD27I8sZJRcC1ASnCy6lp3g==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tough-cookie": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-6.0.2.tgz",
++      "integrity": "sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "tldts": "^7.0.5"
++      },
++      "engines": {
++        "node": ">=16"
++      }
++    },
++    "node_modules/tr46": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/tr46/-/tr46-6.0.0.tgz",
++      "integrity": "sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "punycode": "^2.3.1"
++      },
++      "engines": {
++        "node": ">=20"
+       }
+     },
+     "node_modules/tsx": {
+@@ -1204,6 +1757,92 @@
+           "optional": true
+         }
+       }
++    },
++    "node_modules/w3c-xmlserializer": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-5.0.0.tgz",
++      "integrity": "sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/webidl-conversions": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-8.0.1.tgz",
++      "integrity": "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-mimetype": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-4.0.0.tgz",
++      "integrity": "sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/whatwg-url": {
++      "version": "15.1.0",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-15.1.0.tgz",
++      "integrity": "sha512-2ytDk0kiEj/yu90JOAp44PVPUkO9+jVhyf+SybKlRHSDlvOOZhdPIrr7xTH64l4WixO2cP+wQIcgujkGBPPz6g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tr46": "^6.0.0",
++        "webidl-conversions": "^8.0.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/ws": {
++      "version": "8.22.0",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.22.0.tgz",
++      "integrity": "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.0.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": ">=5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/xml-name-validator": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
++      "integrity": "sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/xmlchars": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz",
++      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
++      "dev": true,
++      "license": "MIT"
+     }
+   }
+ }
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.2.1",
++  "version": "2.2.2",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+@@ -18,11 +18,14 @@
+     "tsx": "^4.20.0"
+   },
+   "devDependencies": {
++    "@types/jsdom": "^30.0.0",
++    "@types/node": "^24.0.0",
+     "@types/react": "^19.2.0",
+     "@types/react-dom": "^19.2.0",
++    "esbuild": "^0.28.2",
++    "jsdom": "^27.4.0",
+     "typescript": "^5.9.3",
+-    "vite": "^7.1.0",
+-    "@types/node": "^24.0.0"
++    "vite": "^7.1.0"
+   },
+   "engines": {
+     "node": ">=24.0.0"
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -4,9 +4,8 @@
+ import { InputError, scoreInput, viewInput, object, styleInput, difficultyInput } from "./validation";
+ 
+ export const MAX_BODY_BYTES = 65536;
+-let ready: Promise<void> | undefined;
+ function ensureCore() {
+-  return (ready ??= initCore());
++  return initCore();
+ }
+ function json(
+   data: unknown,
+@@ -40,7 +39,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.2.1",
++      version: "2.2.2",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+diff --git a/src/EngineBootstrap.tsx b/src/EngineBootstrap.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/EngineBootstrap.tsx
+@@ -0,0 +1,35 @@
++import { useEffect, useState } from "react";
++import type { ReactNode } from "react";
++import { initCore } from "./engine/core";
++
++type Startup = { status: "loading" | "ready" } | { status: "error"; message: string };
++
++// Keep the whole table unmounted until initialization completes. A loading
++// return at the bottom of App cannot protect earlier render-time scoring.
++export function EngineBootstrap({ children, initialize = initCore }: {
++  children: ReactNode;
++  initialize?: () => Promise<void>;
++}) {
++  const [startup, setStartup] = useState<Startup>({ status: "loading" });
++  const [attempt, setAttempt] = useState(0);
++  useEffect(() => {
++    let active = true;
++    Promise.resolve().then(() => initialize()).then(
++      () => { if (active) setStartup({ status: "ready" }); },
++      error => { if (active) setStartup({ status: "error", message: error instanceof Error ? error.message : String(error) }); },
++    );
++    return () => { active = false; };
++  }, [initialize, attempt]);
++  if (startup.status === "ready") return children;
++  if (startup.status === "error") return <div className="loading" role="alert">
++    <h2>规则引擎加载失败</h2>
++    <p>{startup.message}</p>
++    <p>牌局存档仍保留，可以重试加载。</p>
++    <button onClick={() => { setStartup({ status: "loading" }); setAttempt(n => n + 1); }}>重试加载</button>
++  </div>;
++  return <div className="loading" role="status" aria-live="polite">
++    <div className="brand-mark">一</div>
++    <h2>一桌麻将</h2>
++    <p>正在准备牌桌与规则引擎…</p>
++  </div>;
++}
+diff --git a/src/engine/core.ts b/src/engine/core.ts
+--- a/src/engine/core.ts
++++ b/src/engine/core.ts
+@@ -8,10 +8,27 @@
+     values: unknown[],
+   ) => string;
+ };
+-let core: Core;
++let core: Core | undefined;
+ let coreReady: Promise<void> | undefined;
+-export async function initCore(options: Record<string, unknown> = {}) {
+-  await (coreReady ??= createCore(options).then((value: Core) => { core = value; }));
++export function initCore(options: Record<string, unknown> = {}): Promise<void> {
++  return (coreReady ??= Promise.resolve()
++    .then(() => createCore(options))
++    .then((value: Core) => {
++      if (typeof value?.ccall !== "function") throw new Error("规则引擎初始化未完成");
++      core = value;
++    })
++    .catch((error: unknown) => {
++      coreReady = undefined;
++      throw error;
++    }));
++}
++export function isCoreReady() { return core !== undefined; }
++export class CoreNotReadyError extends Error {
++  constructor() { super("规则引擎尚未就绪，请等待加载完成"); this.name = "CoreNotReadyError"; }
++}
++function requireCore(): Core {
++  if (!core) throw new CoreNotReadyError();
++  return core;
+ }
+ export const suit = (t: Tile) => (t < 27 ? Math.floor(t / 9) : 3);
+ export const rank = (t: Tile) => (t < 27 ? (t % 9) + 1 : 0);
+@@ -48,7 +65,7 @@
+   wind = 0,
+ ): { total: number; items: Fan[] } {
+   return JSON.parse(
+-    core.ccall(
++    requireCore().ccall(
+       "mj_score",
+       "string",
+       ["string", "number", "number", "number"],
+@@ -66,7 +83,7 @@
+   const old = cache.get(key);
+   if (old) return old;
+   const r = JSON.parse(
+-    core.ccall(
++    requireCore().ccall(
+       "mj_eval",
+       "string",
+       ["string", "number"],
+@@ -93,7 +110,7 @@
+   return r;
+ }
+ export function fanReference(): { name: string; value: number }[] {
+-  return JSON.parse(core.ccall("mj_fans", "string", [], []));
++  return JSON.parse(requireCore().ccall("mj_fans", "string", [], []));
+ }
+ export function scoreString(
+   text: string,
+@@ -102,7 +119,7 @@
+   wind = 0,
+ ): { total: number; items: Fan[] } {
+   return JSON.parse(
+-    core.ccall(
++    requireCore().ccall(
+       "mj_score",
+       "string",
+       ["string", "number", "number", "number"],
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,7 +1,7 @@
+ import React, { useEffect, useMemo, useState } from "react";
+ import { createRoot } from "react-dom/client";
++import { EngineBootstrap } from "./EngineBootstrap";
+ import {
+-  initCore,
+   suit,
+   tileName,
+   evaluate,
+@@ -422,9 +422,7 @@
+   const online = useRoom();
+   const [roomsOpen, setRoomsOpen] = useState(!!online.session || new URL(location.href).searchParams.has("room"));
+   const [createName, setCreateName] = useState<string | null>(null);
+-  const [ready, setReady] = useState(false),
+-    [failure, setFailure] = useState(""),
+-    [localGame, setGame] = useState<Game | null>(validInitial);
++  const [localGame, setGame] = useState<Game | null>(validInitial);
+   const game = online.session ? online.room?.game ?? null : localGame;
+   const [localSession, setLocalSession] = useState(0);
+   const [config, setConfig] = useState<Config>(
+@@ -446,11 +444,6 @@
+   const feedbackStream = `${online.session?.id ?? `solo:${localSession}`}:${game?.round ?? 0}:${game?.seed ?? 0}`;
+   const feedback = useTableFeedback(game, feedbackStream, !!replay, prefs.voice, prefs.sound, sound, prefs.voiceChoice, prefs.voiceRate);
+   const latestDiscard = !replay ? [...(game?.events ?? [])].reverse().find(e => e.kind === "discard") : undefined;
+-  useEffect(() => {
+-    initCore()
+-      .then(() => setReady(true))
+-      .catch((e) => setFailure(String(e)));
+-  }, []);
+   useEffect(() => {
+     if (game && !online.session && game.seed !== 0)
+       try {
+@@ -496,7 +489,6 @@
+   };
+   const auto =
+     !online.session &&
+-    ready &&
+     game &&
+     !paused &&
+     !setup &&
+@@ -554,14 +546,13 @@
+     (!online.session || (!!online.room && !online.room.seats[0].autoplay && !online.busy));
+   const analysis = useMemo(
+     () =>
+-      ready && game && ourTurn && prefs.hints && !replay
++      game && ourTurn && prefs.hints && !replay
+         ? online.session ? online.advice : advise(publicView(game, 0), { style: prefs.assistantStyle, difficulty: "advanced" })
+         : [],
+-    [ready, game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
++    [game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
+   );
+   const waiting = useMemo(() => {
+     if (
+-      !ready ||
+       !game ||
+       !prefs.hints ||
+       game.players[0].won ||
+@@ -584,7 +575,7 @@
+         )
+         .map((tile) => ({ tile, left: Math.max(0, 4 - k[tile]) })),
+     };
+-  }, [ready, game, prefs.hints]);
++  }, [game, prefs.hints]);
+   const playerActions = online.session ? online.room?.actions ?? [] : game ? ownActions(game, 0) : [];
+   const claim =
+     online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
+@@ -665,22 +656,6 @@
+     setReplayIndex(0);
+     setReplayPlay(false);
+   };
+-  if (failure)
+-    return (
+-      <div className="loading">
+-        <h2>规则引擎加载失败</h2>
+-        <p>{failure}</p>
+-        <button onClick={() => location.reload()}>重新加载</button>
+-      </div>
+-    );
+-  if (!ready)
+-    return (
+-      <div className="loading">
+-        <div className="brand-mark">一</div>
+-        <h2>一桌麻将</h2>
+-        <p>正在准备牌桌与规则引擎…</p>
+-      </div>
+-    );
+   const title = game?.config.mode === "mcr" ? "国标麻将" : "四川麻将";
+   let status = "等待开始";
+   if (game) {
+@@ -1424,6 +1399,6 @@
+ }
+ createRoot(document.getElementById("root")!).render(
+   <React.StrictMode>
+-    <App />
++    <EngineBootstrap><App /></EngineBootstrap>
+   </React.StrictMode>,
+ );
+diff --git a/tests/startup.test.ts b/tests/startup.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/startup.test.ts
+@@ -0,0 +1,96 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { act, createElement as h, StrictMode } from "react";
++import type { Root } from "react-dom/client";
++import { JSDOM } from "jsdom";
++import { EngineBootstrap } from "../src/EngineBootstrap";
++import { initCore, isCoreReady, CoreNotReadyError, evaluate, fanReference, rawScore, scoreString } from "../src/engine/core";
++import { newGame, ownActions } from "../src/engine/game";
++import { defaultConfig } from "../src/engine/types";
++import type { Game } from "../src/engine/types";
++
++const saved = JSON.stringify(newGame({ ...defaultConfig, mode: "mcr" }, undefined, 64));
++function deferred() {
++  let resolve!: () => void;
++  const promise = new Promise<void>(r => { resolve = r; });
++  return { promise, resolve };
++}
++async function domRoot() {
++  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost/" });
++  const previous = new Map<string, PropertyDescriptor | undefined>();
++  for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true })) {
++    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
++    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
++  }
++  dom.window.localStorage.setItem("quiet-mahjong-v3", saved);
++  const { createRoot } = await import("react-dom/client");
++  const container = dom.window.document.getElementById("root")!, root: Root = createRoot(container);
++  return { dom, root, container, async cleanup() {
++    await act(async () => root.unmount());
++    dom.window.close();
++    for (const [key, descriptor] of previous) {
++      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
++      else Reflect.deleteProperty(globalThis, key);
++    }
++  } };
++}
++
++test("Cold engine calls fail explicitly rather than accessing undefined ccall", () => {
++  assert.equal(isCoreReady(), false);
++  for (const call of [() => ownActions(JSON.parse(saved), 0), () => rawScore([], [], 0), () => evaluate([], [], true), fanReference, () => scoreString("123m")]) {
++    assert.throws(call, CoreNotReadyError);
++  }
++});
++test("Concurrent initialization shares a single attempt and a failure is not permanently cached", async () => {
++  let attempts = 0;
++  const failure = new Error("simulated initialization failure");
++  const first = initCore({ preInit: () => { attempts++; throw failure; } });
++  assert.equal(initCore(), first);
++  await assert.rejects(first, error => error === failure);
++  assert.equal(attempts, 1); assert.equal(isCoreReady(), false);
++});
++test("StrictMode cold restore defers every MCR scoring render until the real engine is ready", async () => {
++  const fixture = await domRoot(), pending = deferred();
++  let scored = 0;
++  function RestoredTable() {
++    const game = JSON.parse(localStorage.getItem("quiet-mahjong-v3")!) as Game;
++    const actions = ownActions(game, 0); scored++;
++    return h("output", { "data-table": "ready" }, JSON.stringify(actions));
++  }
++  const initialize = () => pending.promise.then(() => initCore());
++  try {
++    await act(async () => fixture.root.render(h(StrictMode, null, h(EngineBootstrap, { initialize, children: h(RestoredTable) }))));
++    assert.ok(fixture.container.querySelector('[role="status"]'));
++    assert.equal(scored, 0); assert.equal(isCoreReady(), false);
++    assert.equal(fixture.dom.window.localStorage.getItem("quiet-mahjong-v3"), saved);
++    await act(async () => { pending.resolve(); await pending.promise; await initCore(); });
++    assert.equal(isCoreReady(), true); assert.ok(scored > 0);
++    assert.ok(fixture.container.querySelector('[data-table="ready"]'));
++    assert.equal(fixture.container.querySelector('[role="status"]'), null);
++    assert.equal(fixture.dom.window.localStorage.getItem("quiet-mahjong-v3"), saved);
++  } finally { await fixture.cleanup(); }
++});
++test("Failed startup keeps the table unmounted and retry succeeds without deleting the saved game", async () => {
++  const fixture = await domRoot(); let attempts = 0, scored = 0;
++  const initialize = async () => { if (++attempts === 1) throw new Error("temporarily unavailable"); await initCore(); };
++  function Table() { ownActions(JSON.parse(saved), 0); scored++; return h("output", null, "table ready"); }
++  try {
++    await act(async () => fixture.root.render(h(EngineBootstrap, { initialize, children: h(Table) })));
++    assert.ok(fixture.container.querySelector('[role="alert"]')); assert.equal(scored, 0);
++    assert.equal(fixture.dom.window.localStorage.getItem("quiet-mahjong-v3"), saved);
++    await act(async () => fixture.container.querySelector("button")!.dispatchEvent(new fixture.dom.window.MouseEvent("click", { bubbles: true })));
++    assert.equal(attempts, 2); assert.ok(scored > 0); assert.equal(fixture.container.querySelector('[role="alert"]'), null);
++    assert.equal(fixture.dom.window.localStorage.getItem("quiet-mahjong-v3"), saved);
++  } finally { await fixture.cleanup(); }
++});
++test("An unmounted loading attempt cannot render its table after a late completion", async () => {
++  const fixture = await domRoot(), pending = deferred(); let mounted = 0;
++  const initialize = () => pending.promise;
++  function Table() { mounted++; return h("div", null, "old table"); }
++  try {
++    await act(async () => fixture.root.render(h(EngineBootstrap, { initialize, children: h(Table) })));
++    await act(async () => fixture.root.render(h("div", null, "replacement")));
++    await act(async () => { pending.resolve(); await pending.promise; });
++    assert.equal(mounted, 0); assert.equal(fixture.container.textContent, "replacement");
++  } finally { await fixture.cleanup(); }
++});

@@ -8,10 +8,27 @@ type Core = {
     values: unknown[],
   ) => string;
 };
-let core: Core;
+let core: Core | undefined;
 let coreReady: Promise<void> | undefined;
-export async function initCore(options: Record<string, unknown> = {}) {
-  await (coreReady ??= createCore(options).then((value: Core) => { core = value; }));
+export function initCore(options: Record<string, unknown> = {}): Promise<void> {
+  return (coreReady ??= Promise.resolve()
+    .then(() => createCore(options))
+    .then((value: Core) => {
+      if (typeof value?.ccall !== "function") throw new Error("规则引擎初始化未完成");
+      core = value;
+    })
+    .catch((error: unknown) => {
+      coreReady = undefined;
+      throw error;
+    }));
+}
+export function isCoreReady() { return core !== undefined; }
+export class CoreNotReadyError extends Error {
+  constructor() { super("规则引擎尚未就绪，请等待加载完成"); this.name = "CoreNotReadyError"; }
+}
+function requireCore(): Core {
+  if (!core) throw new CoreNotReadyError();
+  return core;
 }
 export const suit = (t: Tile) => (t < 27 ? Math.floor(t / 9) : 3);
 export const rank = (t: Tile) => (t < 27 ? (t % 9) + 1 : 0);
@@ -48,7 +65,7 @@ export function rawScore(
   wind = 0,
 ): { total: number; items: Fan[] } {
   return JSON.parse(
-    core.ccall(
+    requireCore().ccall(
       "mj_score",
       "string",
       ["string", "number", "number", "number"],
@@ -66,7 +83,7 @@ export function evaluate(hand: Tile[], melds: Meld[], mcr: boolean) {
   const old = cache.get(key);
   if (old) return old;
   const r = JSON.parse(
-    core.ccall(
+    requireCore().ccall(
       "mj_eval",
       "string",
       ["string", "number"],
@@ -93,7 +110,7 @@ export function evaluate(hand: Tile[], melds: Meld[], mcr: boolean) {
   return r;
 }
 export function fanReference(): { name: string; value: number }[] {
-  return JSON.parse(core.ccall("mj_fans", "string", [], []));
+  return JSON.parse(requireCore().ccall("mj_fans", "string", [], []));
 }
 export function scoreString(
   text: string,
@@ -102,7 +119,7 @@ export function scoreString(
   wind = 0,
 ): { total: number; items: Fan[] } {
   return JSON.parse(
-    core.ccall(
+    requireCore().ccall(
       "mj_score",
       "string",
       ["string", "number", "number", "number"],

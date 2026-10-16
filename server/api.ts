@@ -4,9 +4,8 @@ import { rules } from "../src/engine/rules";
 import { InputError, scoreInput, viewInput, object, styleInput, difficultyInput } from "./validation";
 
 export const MAX_BODY_BYTES = 65536;
-let ready: Promise<void> | undefined;
 function ensureCore() {
-  return (ready ??= initCore());
+  return initCore();
 }
 function json(
   data: unknown,
@@ -40,7 +39,7 @@ export async function handleApi(request: Request, capabilities: { onlineRooms?: 
     return json({
       status: "ok",
       service: "quiet-mahjong",
-      version: "2.2.1",
+      version: "2.2.2",
       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
       persistentServerState: !!capabilities.onlineRooms,
       onlineRooms: !!capabilities.onlineRooms,
