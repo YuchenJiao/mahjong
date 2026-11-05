@@ -226,7 +226,7 @@ test("Legacy JSON saves initialize public events on the next confirmed action", 
   const g = rigDiscard("mcr");
   delete g.events;
   discard(g,0,0);
-  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0}]);
+  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0,fromDraw:true}]);
 });
 test("Sichuan simultaneous wins pay each winner and continue with two active players", () => {
   const g = rigDiscard("sichuan");
@@ -242,7 +242,7 @@ test("Sichuan simultaneous wins pay each winner and continue with two active pla
   assert.equal(g.current, 3);
   assert.equal(g.phase, "turn");
   assert.equal(g.players[0].river.length, 0);
-  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2]]);
+  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2],["draw",3]]);
 });
 test("MCR simultaneous win picks nearest player and ends immediately", () => {
   const g = rigDiscard("mcr");
@@ -295,7 +295,8 @@ test("Concealed kong payment only charges active opponents", () => {
   assert.equal(g.players[0].score, 4);
   assert.equal(g.players[2].score, 0);
   assert.equal(g.kongDraw, true);
-  assert.deepEqual(g.events!.at(-1), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
+  assert.deepEqual(g.events!.find(e=>e.kind==="kong"), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
+  assert.equal(g.events!.at(-1)!.kind, "draw");
 });
 test("Wall end performs ready, flower pig and tax refund accounting", () => {
   const g = rigDiscard("sichuan");

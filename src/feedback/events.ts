@@ -1,8 +1,9 @@
 import type { TableEvent } from "../engine/types";
 import { tileName } from "../engine/core";
 
-export const eventLabel = (event: TableEvent) => ({ discard: "出牌", chow: "吃", pung: "碰", kong: "杠", win: event.self ? "自摸" : "胡" })[event.kind];
+export const eventLabel = (event: TableEvent) => ({ discard: event.fromDraw === undefined ? "出牌" : event.fromDraw ? "摸切" : "手切", draw: "摸牌", integrate: "归入手牌", chow: "吃", pung: "碰", kong: "杠", win: event.self ? "自摸" : "胡" })[event.kind];
 export function eventSpeech(event: TableEvent): string {
+  if (event.kind === "draw" || event.kind === "integrate") return "";
   if (event.kind !== "discard") return event.kind === "win" && event.self ? "自摸，胡" : eventLabel(event);
   if (event.tile === undefined || event.tile < 0 || event.tile > 33) return "";
   const name = tileName(event.tile).replace(/[1-9]/g, n => "一二三四五六七八九"[Number(n) - 1]);

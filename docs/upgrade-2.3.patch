@@ -1,0 +1,1382 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# 一桌麻将 · 在线版 2.2.3
++# 一桌麻将 · 在线版 2.3.0
+ 
+ React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+@@ -25,6 +25,18 @@
+ 6. 结束后可复盘四家完整手牌；房主继续下一局，累计座位分数。
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
++
++## 2.3 摸牌、理牌与做牌指导
++
++- 新摸牌在手牌右侧单独显示，以明显的入场动画和金色边框标记。可直接摸切，也可点“新摸牌归入手牌”后再选择出牌。联机公开摸牌、归入、摸切／手切动作，不公开他家摸牌牌面。
++- 点“手动理牌”后拖动手牌；触屏可点选一张再用左移／右移。牌序自动保存在当前浏览器，刷新可恢复；“自动排序”恢复排序。数字快捷键按当前可见牌序选牌。
++- 吃、碰、杠、胡的选择按钮下方出现只读操作建议，对比向听、合法进张、门清损失、抢杠风险及过牌。合法胡牌默认建议兑现收益，同时说明等更高分的可能性和风险，最终由玩家决定。
++- 打开“提示”，牌桌下方显示当前做牌主线，点击进入“做牌方向”。列出至多三条常见路线、适合保留的牌、示例所缺牌和未见张数；可展开成牌示例与番种。
++- 国标按完整计分引擎校验示例和番型互斥，区分点和、自摸；常规等待明确显示8分是否达标及死听。已知公开绝张参与计分，未来杠上花、海底等事件番不预先计入。
++
++做牌路线为有限搜索的参考方案，示例缺牌张数不是向听数，不保证能取得所需牌，也不代表已经拿到示例分数。助手风格仍可实时调整；电脑难度算法沿用原三档。
++
++已有2.2.3仓库见[2.3升级说明](docs/UPGRADE_2.3.md)。联机前后端需要一起升级；浏览器存档与SQLite房间数据不需要清空或迁移。
+ 
+ ## 2.2.3修复电脑难度标签
+ 
+diff --git a/docs/AI_AND_ASSISTANT.md b/docs/AI_AND_ASSISTANT.md
+--- a/docs/AI_AND_ASSISTANT.md
++++ b/docs/AI_AND_ASSISTANT.md
+@@ -30,3 +30,17 @@
+ ## 能力边界
+ 
+ 风险和听牌倾向是启发式推断，没有经过统计校准，不能作为准确概率。有限搜索不能保证最优打法，也不能保证必胡或不点炮。回归牌例验证合理的具体行为与完整对局可结束，不等于已经证明胜率提升。
++
++## 2.3 操作与做牌指导
++
++`src/engine/assistant.ts`复用PublicView，只使用本人手牌及公开信息。联网通过房间的只读`analyze`端点返回`guidance`，本地用同一模块。它不会点击或替用户执行操作。
++
++吃碰杠胡候选以规则引擎允许的动作列表为准。对吃碰后的最佳弃牌形状、常规合法等待、开门后的门清损失和补杠风险做对比。杠后补牌视为未知，不能提前算事件奖励。胡牌显示当前真实分数及番种，默认建议合法胡牌；过牌说明仍有未见余张的更高分常规等待或改牌风险。未经过校准的启发式比较不输出胜率或保证收益。
++
++做牌方向列出至多三条候选，覆盖三色三同顺、清龙、花龙、碰碰和、适用的字牌刻子、清一色、混一色、七对，并加入已听的合法特殊结构。保留已副露牌组，排除已知张数不足以补成的示例。只保留有限数量的最接近候选，不是穷举所有81番种的未来组合。
++
++每条示例的点和／自摸分数调用完整国标或川麻规则引擎，按实际番型互斥取值。实际已公开三张的绝张条件可计入，未来事件不预设。显示目标所缺牌及未见张数、适合保留的手牌、完整成牌示例和和牌张；这些是候选完成后的分数，不是当前已有收益。常规等待即使不足8分也展示，并清晰标为未达标；未见数为0时标为已无余张。关闭8分或番数计算后，合法性随本局配置调整。
++
++14张手牌先按当前助手风格取一个建议弃牌作为13张做牌分析基准，界面明确展示该基准。目标缺牌张数不等于向听数。有限示例可能漏掉更好的路线，未找到示例不等于不能胡牌。
++
++摸牌／归入不播报暗牌。联机事件仅含动作、座位和序号；弃牌成立后才带牌面及`fromDraw`来源标记。归入只改变公开摆放状态与回放帧，不改变手牌数量、规则判断或操作截止时间。个人手动牌序仅存在本人浏览器，按牌局区分保存，键盘选择映射回实际手牌索引。
+diff --git a/docs/API.md b/docs/API.md
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -118,3 +118,11 @@
+ `RoomView.game.events`是本局已确认的公开动作，按时间递增。元素为`{id, actor, kind, tile?, self?}`；`kind`包含`discard/chow/pung/kong/win`。`actor`和其他座位字段一样，已旋转为当前接收者视角（自己为0）。暗杠事件没有`tile`；摸牌不产生公开牌面事件。吃碰杠胡只有规则仲裁后实际成立才写入，抢杠取消的补杠及被胡牌优先取消的碰牌不写入。
+ 
+ 前端首次接入、刷新或换房间时从当前事件尾部开始，后续仅消费新的事件ID。`events`在旧存档中可缺省，首次新动作自动创建；不需要数据库表结构迁移。回放使用既有Frame，不触发实时语音。
++
++## 2.3 摸牌来源与实时指导
++
++房间`game.drawState`为`{actor,id,separated}`或null。actor按接收者视角旋转，id对应本次摸牌事件；初始庄家为0。其他玩家的`drawnTile`仍为null，暗牌仍为-1。`draw`与`integrate`公开事件不含tile，`discard`增加可选布尔`fromDraw`：true为右侧新摸牌直接打出，false为手牌打出。历史事件缺少字段时按普通出牌展示。
++
++新命令：`{type:"integrateDraw",drawId:number}`，只允许当前摸牌者执行，服务端校验本次摸牌编号；归入不续期倒计时或变更行动阶段。归入产生`layoutOnly:true`回放帧，阶段号的计数排除这类帧。重复请求仍复用requestId幂等。`discard`命令可带`fromDraw`；不传则兼容旧客户端，按实际牌面与独立槽状态推断。带来源的错误请求会拒绝。
++
++`POST /api/rooms/:id/analyze`保留`stage`、`style`、`analysis`返回值，新增`guidance`。在本人非出牌回合也可返回做牌报告，`analysis`仍仅本人出牌回合有弃牌候选。`guidance`包含shanten、basisDiscard、waits、routes、actions、eightPointMinimum、notes；每条路线含完整示例example、缺牌needed、保留keep、点和ron与自摸self的WinScore。操作建议只取本人当前合法动作，不泄露他家候选。请求不改变牌局、倒计时、托管状态或个人／房间风格设置。前端丢弃过期stage或风格不符的响应。
+diff --git a/docs/UPGRADE_2.3.md b/docs/UPGRADE_2.3.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.3.md
+@@ -0,0 +1,31 @@
++# 从2.2.3升级到2.3.0
++
++本版新增新摸牌独立槽、公开的归入／摸切／手切动作、本地手动理牌、吃碰杠胡建议和实时做牌方向。联机的新增字段及命令需要前后端同时更新。
++
++## 使用完整源码
++
++将本代码包中的源码覆盖到自己的仓库，保留自己的`.env`及SQLite数据目录，提交并推送。不要复制`node_modules`、`dist`或其他环境的数据库。默认忽略这些文件。
++
++## 使用补丁
++
++如果自己的代码仍是未修改的2.2.3，可将本包的`docs/upgrade-2.3.patch`复制到旧仓库，再运行：
++
++```bash
++git apply --check docs/upgrade-2.3.patch
++git apply docs/upgrade-2.3.patch
++npm ci
++npm test
++npm run build
++```
++
++补丁以完整的2.2.3包为基线，不包含补丁本身及`MANIFEST.json`。若有自己的改动，请先检查冲突，不要强制覆盖。
++
++## 重新部署
++
++- Render单服务：推送自己的仓库后按已有方式重新部署，构建`npm ci && npm run build`，启动`npm start`，Node.js 24以上。保留原数据盘／SQLite路径。
++- Vercel或GitHub Pages前端与Render后端分开部署：两端都要推送并重新部署。保持现有`VITE_ONLINE_API_URL`与CORS配置。
++- 部署后刷新客户端，在`/api/health`核对`version`为`2.3.0`。旧客户端保留传统出牌兼容字段，但不会显示新功能，请刷新。
++
++浏览器存档版本仍为3，SQLite表结构不变。旧牌局没有独立摸牌状态时会使用兼容推断，后续新动作记录完整状态。手动理牌在本机存储，不上传隐藏牌序；归入手牌是公开动作，不会重置45秒行牌计时。
++
++本包提供代码与升级材料，不会自动修改用户自行管理的GitHub、Render、Vercel或Pages部署。
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,4 +1,34 @@
+-# 交付验证记录 · 2.2.3
++# 交付验证记录 · 2.3.0
++
++日期：2026-11-05。
++
++| 检查 | 结果 |
++|---|---|
++| TypeScript前后端检查、Vite生产构建 | 通过 |
++| 全部自动测试 | 75项通过，0失败；包含旧版完整对局、算番与按钮提交回归 |
++| 摸牌状态 | 新摸牌独立显示；直接摸切与同牌面手切分别记录；错误来源和过期摸牌编号拒绝 |
++| 手动理牌 | DOM实际入口验证选牌右移、本地保存、归入后14张牌数量与实际手牌不变；多重同牌索引正确 |
++| 联机公开动作及隐私 | 两个独立座位观察归入、摸切／手切；非本人drawnTile为null，摸牌／归入事件不含tile，暗牌保持隐藏 |
++| 行动计时 | 归入只增加布局帧，stage和deadline不变；下一次tick也不会因布局帧重置倒计时 |
++| 国标等待分数 | 点和、自摸分开；8分开关与固定分遵守配置；可见绝张参与计算，暗杠不作公开绝张 |
++| 做牌示例 | 多个牌例逐条与完整引擎重算结果比对；缺牌数量与余张约束正确；保留副露，不误计门清条件 |
++| 胡牌及操作建议 | 比较吃碰等动作与过牌；合法胡牌优先建议；继续追分说明机会与风险；不自动替玩家选择 |
++| 助手公开信息限制 | 改变对手暗牌及牌墙顺序，报告相同；请求只读，缓存返回不受消费者修改影响 |
++| 川麻 | 定缺限制保留；无国标门前清／不求人加分提示；旧32局本地、14局联网完整对局回归通过 |
++| 实际Node HTTP | 2.3.0健康、生产HTML、双会话建房加入、guidance、归入、手切、暗牌隐藏和计时不变全部通过 |
++| 真实Chrome界面 | 桌面1348×926视窗核验：手动移动、刷新后牌序、归入、新一轮右侧摸牌、做牌方向切换与分数展示 |
++
++手机横屏、Safari、触屏拖动及设备扬声器本次未做实机复测；手机可用点选＋左移／右移操作，并延续窄屏滚动布局。动画按系统减少动态效果设置降级。语音仍依赖设备提供的音色，本版没有新增录音或付费服务。
++
++做牌规划为有限常见路线搜索，不穷举所有未来番种组合。示例距离不是向听数，示例完成分不是当前收益；未见数不是实际牌墙中的数量，不保证取得。对手风险仍是未校准的启发式估计。
++
++交付完整源码与2.2.3→2.3.0补丁，补丁实际应用后与新源码逐文件比对，ZIP逐项校验。没有更新用户自己管理的外部部署；需要推送仓库并同时重新部署前后端。
++
++---
++
++以下保留2.2.3的历史验证记录，版本及未复测说明均指当时交付：
++
++## 交付验证记录 · 2.2.3
+ 
+ 日期：2026-10-19。
+ 
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.2.3",
++  "version": "2.3.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.2.3",
++      "version": "2.3.0",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.2.3",
++  "version": "2.3.0",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -39,7 +39,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.2.3",
++      version: "2.3.0",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+diff --git a/server/rooms.ts b/server/rooms.ts
+--- a/server/rooms.ts
++++ b/server/rooms.ts
+@@ -1,7 +1,8 @@
+ import { initCore, suit } from "../src/engine/core";
++import { buildAssistantReport } from "../src/engine/assistant";
+ import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
+ import { newGame, exchangeAll, voidAll, chooseExchange, chooseVoid, publicView,
+-  ownActions, act, discard, respond, advance, historicalDiscards } from "../src/engine/game";
++  ownActions, act, discard, respond, advance, historicalDiscards, integrateDraw } from "../src/engine/game";
+ import type { Game, Config, Frame, Meld } from "../src/engine/types";
+ import type { RoomCommand, RoomView } from "../src/online/protocol";
+ import { configInput, object, InputError, difficultyInput, styleInput } from "./validation";
+@@ -30,7 +31,7 @@
+   if (typeof x !== "string" || !x.trim() || x.trim().length > 12 || /[\p{C}]/u.test(x)) throw new RoomError("昵称须为1–12个字符");
+   return x.trim();
+ }
+-export function stageKey(g: Game | null) { return g ? `${g.round}:${g.phase}:${g.current}:${g.frames.length}` : "lobby"; }
++export function stageKey(g: Game | null) { return g ? `${g.round}:${g.phase}:${g.current}:${g.frames.length-g.frames.filter(f=>f.layoutOnly).length}` : "lobby"; }
+ function clock(r: RoomRecord, now: number) {
+   const stage = stageKey(r.game);
+   if (r.stage !== stage) {
+@@ -115,7 +116,13 @@
+   } else if (c.type === "void") {
+     if (g.phase !== "void" || r.voids[seat] !== null || ![0, 1, 2].includes(c.suit)) throw new RoomError("当前不能定缺");
+     r.voids[seat] = c.suit;
+-  } else if (c.type === "discard") discard(g, seat, c.tile);
++  } else if (c.type === "integrateDraw") {
++    if (!Number.isInteger(c.drawId)) throw new RoomError("摸牌编号无效");
++    integrateDraw(g, seat, c.drawId); return; // Moving a tile does not renew the turn clock.
++  } else if (c.type === "discard") {
++    if (c.fromDraw !== undefined && typeof c.fromDraw !== "boolean") throw new RoomError("出牌方式无效");
++    discard(g, seat, c.tile, c.fromDraw);
++  }
+   else if (c.type === "act") act(g, seat, c.action);
+   else if (c.type === "claim") { respond(g, seat, c.action); advance(g); }
+   else throw new RoomError("未知操作");
+@@ -124,7 +131,7 @@
+ export function roomView(r: RoomRecord, self: number, now: number): RoomView {
+   const order = [0, 1, 2, 3].map(i => (i + self) % 4), at = (i: number) => (i - self + 4) % 4;
+   const rotateMeld = (m: Meld) => ({ ...m, from: at(m.from) });
+-  const rotateFrame = (f: Frame): Frame => ({ ...f, players: order.map(i => ({ ...clone(f.players[i]), melds: f.players[i].melds.map(rotateMeld) })), current: at(f.current), dealer: at(f.dealer), lastFrom: f.lastFrom === undefined ? undefined : at(f.lastFrom) });
++  const rotateFrame = (f: Frame): Frame => ({ ...f, players: order.map(i => ({ ...clone(f.players[i]), melds: f.players[i].melds.map(rotateMeld) })), current: at(f.current), dealer: at(f.dealer), lastFrom: f.lastFrom === undefined ? undefined : at(f.lastFrom), drawState: f.drawState ? { ...f.drawState, actor: at(f.drawState.actor) } : f.drawState });
+   const g = r.game;
+   let safe: Game | null = null;
+   if (g) {
+@@ -132,6 +139,7 @@
+     safe = {
+       ...clone(g), seed: 0, wall: Array(g.wall.length).fill(-1),
+       current: at(g.current), dealer: at(g.dealer),
++      drawState: g.drawState ? { ...g.drawState, actor: at(g.drawState.actor) } : g.drawState === undefined && g.phase === "turn" && g.drawnTile !== null ? { actor: at(g.current), id: 0, separated: true } : null,
+       events: (g.events ?? []).map(e => ({ ...e, actor: at(e.actor) })),
+       drawnTile: g.current === self || reveal ? g.drawnTile : null,
+       players: order.map(i => {
+@@ -196,7 +204,7 @@
+           if (seat < 0 || bearer.length !== 48) throw new RoomError("无法验证座位", 401);
+           const style = styleInput(data.style), g = r.game;
+           if (data.stage !== undefined && data.stage !== r.stage) throw new RoomError("建议对应的牌局已变化", 409);
+-          return json({ stage: r.stage, style, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
++          return json({ stage: r.stage, style, guidance: g ? buildAssistantReport(g, seat, style) : null, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
+             ? advise(publicView(g, seat), { style, difficulty: "advanced" }) : [] });
+         }
+         if (route === "join") {
+diff --git a/src/AssistantPanels.tsx b/src/AssistantPanels.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/AssistantPanels.tsx
+@@ -0,0 +1,46 @@
++import type { AssistantReport } from "./engine/assistant";
++import type { Config, WinScore } from "./engine/types";
++import { tileName } from "./engine/core";
++import { Tile } from "./Tile";
++
++const scoreText = (score: WinScore, config: Config) => config.scoring ? `${score.fan}${config.mode === "mcr" ? "分" : "番"}` : `${score.points}固定分`;
++export function ActionHints({ report, config }: { report: AssistantReport; config: Config }) {
++  if (!report.actions.length) return null;
++  return <section className="action-hints" aria-label="吃碰杠胡建议">
++    <h3>操作建议 <small>建议不会自动执行</small></h3>
++    <div className="action-hint-list">{report.actions.map((hint,i)=><article key={i} className={hint.recommended?"recommended-action":""}>
++      <strong>{hint.recommended?"建议：":""}{hint.label}{hint.action.tiles?` ${hint.action.tiles.map(tileName).join("、")}`:""}
++        {hint.score?` · ${scoreText(hint.score,config)}`:""}</strong>
++      {hint.reasons.map((reason,k)=><p key={k}>{reason}</p>)}
++      {hint.score&&<div className="fan-chips">{hint.score.items.map((fan,k)=><span key={k}>{fan.name} {fan.value*fan.count}{config.mode==="mcr"?"分":"番"}</span>)}</div>}
++    </article>)}</div>
++  </section>;
++}
++export function StrategyPanel({ report, config }: { report: AssistantReport; config: Config }) {
++  return <section className="strategy-panel" aria-label="实时做牌方向">
++    <h3>实时做牌方向</h3>
++    <p className="threshold-note">{report.eightPointMinimum?"本局8分起胡：结构成牌之外，还须满足番型门槛。":config.scoring?config.mode==="mcr"?"本局未设置8分起胡门槛，保留实际算番。":"川麻按本局配置算番，胡牌须满足定缺等限制。":"本局固定分结算，优先稳定成牌。"}</p>
++    <p>{report.basisDiscard!==undefined?`建议打${tileName(report.basisDiscard)}后，`:"当前"}{report.shanten===0?"结构听牌":`${report.shanten}向听`}。</p>
++    {report.waits.length>0&&<div className="wait-table">
++      <h4>{report.eightPointMinimum?"常规等待与8分门槛":"常规等待与分数"}</h4>
++      <div className="wait-row wait-heading"><span>等待</span><span>未见</span><span>点和</span><span>自摸</span></div>
++      {report.waits.map(w=><div className="wait-row" key={w.tile}><span><Tile tile={w.tile} small /></span><span>约{w.left}张</span>
++        <span className={w.ron.legal?"legal-score":"short-score"}>{scoreText(w.ron,config)}<small>{w.left===0?"已无余张":w.ron.legal?"达标":"未达标"}</small></span>
++        <span className={w.self.legal?"legal-score":"short-score"}>{scoreText(w.self,config)}<small>{w.left===0?"已无余张":w.self.legal?"达标":"未达标"}</small></span></div>)}
++    </div>}
++    <p className="route-explanation">以下是完成后的示例牌型分数，尚未取得的牌和事件番不算作当前收益。</p>
++    {report.routes.length?report.routes.map((route,i)=><article className="route-card" key={route.name}>
++      <div className="route-heading"><strong>{i===0?"优先参考：":"备选："}{route.name}</strong><span>还需补入{route.missing}张</span></div>
++      <p>点和示例 {scoreText(route.ron,config)}{route.ron.legal?"":"（未达门槛）"} · 自摸示例 {scoreText(route.self,config)}{route.self.legal?"":"（未达门槛）"}</p>
++      <h4>适合保留</h4><div className="plan-tiles">{route.keep.map((t,k)=><Tile key={k} tile={t} small />)}</div>
++      <h4>示例尚缺</h4><div className="needed-tiles">{route.needed.map(n=><span key={n.tile}>{tileName(n.tile)}×{n.count}<small>未见约{n.left}张</small></span>)}</div>
++      <details><summary>查看成牌示例与番种</summary>
++        <p>和牌张：{tileName(route.winTile)}；已副露的牌组继续保留。</p>
++        <div className="plan-tiles">{route.example.map((t,k)=><Tile tile={t} key={k} small />)}</div>
++        <p>点和：{route.ron.items.map(f=>`${f.name}${f.value*f.count}`).join("、")||"未成有效牌型"}</p>
++        <p>自摸：{route.self.items.map(f=>`${f.name}${f.value*f.count}`).join("、")||"未成有效牌型"}</p>
++      </details>
++    </article>):<p>这轮未找到合适的常见示例路线，不代表无法胡牌；可结合向听、活张和实际等待调整。</p>}
++    <p className="strategy-limits">{report.notes.join(" ")}</p>
++  </section>;
++}
+diff --git a/src/HandRow.tsx b/src/HandRow.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/HandRow.tsx
+@@ -0,0 +1,70 @@
++import { useEffect, useState } from "react";
++import { Tile } from "./Tile";
++
++export function reconcileOrder(order: readonly number[], tiles: readonly number[]) {
++  const remaining = [...tiles], result: number[] = [];
++  for (const t of order) { const at = remaining.indexOf(t); if (at >= 0) { result.push(t); remaining.splice(at, 1); } }
++  return [...result, ...remaining];
++}
++export function orderedCards(hand: readonly number[], drawIndex: number, order: readonly number[]) {
++  const pool = hand.flatMap((tile, index) => index === drawIndex ? [] : [{ tile, index }]);
++  return reconcileOrder(order, pool.map(c => c.tile)).map(t => pool.splice(pool.findIndex(c => c.tile === t), 1)[0]);
++}
++const KEY = "quiet-mahjong-hand-order";
++function savedOrder(stream: string): number[] {
++  try { const v = JSON.parse(localStorage.getItem(KEY) ?? "null"); return v?.stream === stream && Array.isArray(v.order) && v.order.every((t: unknown) => Number.isInteger(t) && Number(t) >= 0 && Number(t) < 34) ? v.order : []; }
++  catch { return []; }
++}
++export function HandRow({ hand, stream, drawIndex, drawId, selected, suggested, canPick, dim, hidden, onPick, onSelect, onOrderChange, onIntegrate, canIntegrate, editable, replay }: {
++  hand: number[]; stream: string; drawIndex: number; drawId: number;
++  selected: number[]; suggested?: number; canPick: (index: number) => boolean;
++  dim: (index: number) => boolean; hidden: (index: number) => boolean;
++  onPick: (index: number) => void; onSelect: (index: number) => void; onIntegrate: () => void; editable: boolean; replay: boolean;
++  canIntegrate: boolean;
++  onOrderChange: (indices: number[]) => void;
++}) {
++  const [layout, setLayout] = useState(() => ({ stream, order: savedOrder(stream) }));
++  const [manual, setManual] = useState(false);
++  const cards = orderedCards(hand, drawIndex, layout.stream === stream ? layout.order : savedOrder(stream));
++  const values = cards.map(c => c.tile), orderKey = values.join(",");
++  const visualIndices = [...cards.map(c=>c.index),...(drawIndex>=0?[drawIndex]:[])];
++  useEffect(() => { onOrderChange(visualIndices); }, [stream, visualIndices.join(",")]);
++  useEffect(() => {
++    setLayout({ stream, order: values });
++    if (!replay) try { localStorage.setItem(KEY, JSON.stringify({ stream, order: values })); } catch { /* Ordering is optional. */ }
++  }, [stream, orderKey, replay]);
++  function move(from: number, to: number) {
++    if (!Number.isInteger(from) || !Number.isInteger(to) || !editable || from === to || from < 0 || to < 0 || from >= cards.length || to >= cards.length) return;
++    const next = [...values]; next.splice(to, 0, next.splice(from, 1)[0]); setLayout({ stream, order: next });
++  }
++  const selectedAt = selected.length === 1 ? cards.findIndex(c => c.index === selected[0]) : -1;
++  const tile = (index: number, drawn = false) => <Tile tile={hand[index]} hidden={hidden(index)} selected={!replay && selected.includes(index)}
++    suggested={!replay && suggested === hand[index]} dim={!manual && dim(index)} disabled={!(canPick(index) || manual && editable) || replay}
++    onClick={() => manual && editable ? onSelect(index) : onPick(index)} drawn={drawn} />;
++  return <>
++    <div className="hand-tools">
++      <button aria-pressed={manual} disabled={!editable} onClick={() => setManual(v => !v)}>手动理牌{manual ? " · 开" : ""}</button>
++      <button disabled={!editable} onClick={() => setLayout({ stream, order: [...values].sort((a,b) => a-b) })}>自动排序</button>
++      {manual && <>
++        <button aria-label="选中的手牌左移" disabled={!editable || selectedAt <= 0} onClick={() => move(selectedAt, selectedAt-1)}>左移</button>
++        <button aria-label="选中的手牌右移" disabled={!editable || selectedAt < 0 || selectedAt >= cards.length-1} onClick={() => move(selectedAt, selectedAt+1)}>右移</button>
++        <span>拖动手牌；手机点选后用左移／右移</span>
++      </>}
++      {drawIndex >= 0 && <button className="integrate-draw" disabled={!editable || !canIntegrate} onClick={onIntegrate}>新摸牌归入手牌</button>}
++    </div>
++    <div className="human-hand">
++      <div className="hand-held">
++        {cards.map((c, position) => <div className="hand-card" key={c.index} draggable={manual && editable}
++          onDragStart={e => { e.dataTransfer.setData("application/x-mahjong-hand", `${stream}:${position}`); e.dataTransfer.effectAllowed = "move"; }}
++          onDragOver={e => { if (manual && editable) e.preventDefault(); }}
++          onDrop={e => { e.preventDefault(); const data = e.dataTransfer.getData("application/x-mahjong-hand"), prefix = stream+":";
++            if (manual && data.startsWith(prefix)) move(Number(data.slice(prefix.length)), position); }}>
++          {tile(c.index)}
++        </div>)}
++      </div>
++      {drawIndex >= 0 && <div className={`drawn-zone ${replay ? "" : "fresh-draw"}`} key={`${stream}:${drawId}`}>
++        <span className="drawn-label">新摸牌</span>{tile(drawIndex, true)}
++      </div>}
++    </div>
++  </>;
++}
+diff --git a/src/engine/assistant.ts b/src/engine/assistant.ts
+new file mode 100644
+--- /dev/null
++++ b/src/engine/assistant.ts
+@@ -0,0 +1,204 @@
++import { counts, evaluate, suit, tileName, sortHand } from "./core";
++import { advise, discardRisk, knownCounts } from "./ai";
++import { ownActions, publicView, winScore } from "./game";
++import { emptyContext, rules } from "./rules";
++import type { Action, Game, Meld, PlayStyle, PublicView, WinScore } from "./types";
++
++export type WaitAdvice = { tile: number; left: number; ron: WinScore; self: WinScore };
++export type RouteAdvice = {
++  name: string; missing: number; needed: { tile: number; count: number; left: number }[];
++  keep: number[]; example: number[]; core: number[]; ron: WinScore; self: WinScore; winTile: number;
++};
++export type ActionAdvice = {
++  action: Action; label: string; recommended: boolean; reasons: string[];
++  afterShanten?: number; legalWaits?: number; score?: WinScore; executable: boolean;
++};
++export type AssistantReport = {
++  shanten: number; basisDiscard?: number; waits: WaitAdvice[]; routes: RouteAdvice[];
++  actions: ActionAdvice[]; eightPointMinimum: boolean; notes: string[];
++};
++
++function exactScore(v: PublicView, complete: number[], melds: Meld[], winTile: number, self: boolean): WinScore {
++  const hand = [...complete];
++  if (!self) hand.splice(hand.indexOf(winTile), 1);
++  const exposed = v.players.reduce((n,p) => n+p.river.filter(t=>t===winTile).length+p.melds.filter(m=>!m.concealed).flatMap(m=>m.tiles).filter(t=>t===winTile).length,0);
++  return rules[v.config.mode].score({ name: "", hand, melds, river: [], voidSuit: v.voidSuit, won: false, score: 0, roundDelta: 0 }, v.config,
++    { ...emptyContext(winTile), self, seat: v.seat, wind: v.wind, lastCopy: exposed >= 3 });
++}
++export function winningWaits(v: PublicView): WaitAdvice[] {
++  if (v.hand.length % 3 !== 1) return [];
++  const owned = counts([...v.hand, ...v.melds.flatMap(m => m.tiles)]), known = knownCounts(v);
++  const result: WaitAdvice[] = [];
++  for (let tile = 0; tile < (v.config.mode === "mcr" ? 34 : 27); tile++) {
++    if (owned[tile] >= 4 || v.config.mode === "sichuan" && suit(tile) === v.voidSuit) continue;
++    const complete = [...v.hand, tile], ron = exactScore(v, complete, v.melds, tile, false), self = exactScore(v, complete, v.melds, tile, true);
++    // Negative native scores and invalid Sichuan shapes are never legal waits.
++    if (ron.legal || self.legal || v.config.mode === "mcr" && (ron.fan > 0 || self.fan > 0)) result.push({ tile, left: Math.max(0, 4-known[tile]), ron, self });
++  }
++  return result;
++}
++type Group = number[];
++const allGroups: Group[] = [
++  ...Array.from({length: 34}, (_,t) => [t,t,t]),
++  ...Array.from({length: 3}, (_,s) => Array.from({length: 7}, (_,n) => [s*9+n,s*9+n+1,s*9+n+2])).flat(),
++];
++const groupKey = (g: number[]) => g.slice(0,3).join(",");
++const fixedGroups = (v: PublicView) => v.melds.map(m => m.kind === "chow" ? [...m.tiles].sort((a,b)=>a-b) : Array(3).fill(m.tiles[0]) as number[]);
++function concealedTarget(v: PublicView, groups: Group[]): number[] | null {
++  const remaining = groups.map(g => [...g]);
++  for (const g of fixedGroups(v)) {
++    const at = remaining.findIndex(r => groupKey(r) === groupKey(g));
++    if (at < 0) return null;
++    remaining.splice(at,1);
++  }
++  const hand = remaining.flat();
++  if (counts([...hand,...v.melds.flatMap(m=>m.tiles)]).some(n=>n>4)) return null;
++  sortHand(hand); return hand;
++}
++export function directionRoutes(v: PublicView): RouteAdvice[] {
++  const handCounts = counts(v.hand), known = knownCounts(v), limit = v.config.mode === "mcr" ? 34 : 27;
++  const permitted = (t: number) => t < limit && (v.config.mode !== "sichuan" || suit(t) !== v.voidSuit);
++  type Core = { name: string; groups: Group[]; extra?: Group[]; pairs?: number[] };
++  const cores: Core[] = [];
++  if (v.config.mode === "mcr") {
++    for (let n=0;n<7;n++) cores.push({ name: "三色三同顺", groups: [0,1,2].map(s=>[s*9+n,s*9+n+1,s*9+n+2]) });
++    for (let s=0;s<3;s++) cores.push({ name: "清龙", groups: [0,3,6].map(n=>[s*9+n,s*9+n+1,s*9+n+2]) });
++    for (const colors of [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]])
++      cores.push({ name: "花龙", groups: colors.map((s,k)=>[s*9+k*3,s*9+k*3+1,s*9+k*3+2]) });
++  }
++  const support = (g: Group) => { const c=counts(g);return c.reduce((sum,n,t)=>sum+Math.min(n,handCounts[t]),0); };
++  const pungs = allGroups.filter(g=>g[0]===g[1] && permitted(g[0])).sort((a,b)=>support(b)-support(a));
++  const own = fixedGroups(v);
++  // Add practical triplet and flush paths, preserving every already exposed set.
++  if (own.every(g=>g[0]===g[1])) {
++    const selected = [...own];
++    for (const g of pungs) if (selected.length<3 && !selected.some(x=>groupKey(x)===groupKey(g))) selected.push(g);
++    if (selected.length===3) cores.push({ name: "碰碰和方向", groups: selected, extra: pungs });
++    if (v.config.mode === "mcr" && own.length<=2) {
++      for (const honor of [...new Set([31,32,33,27+v.seat,27+v.wind])]) {
++        const selected = [...own];
++        if (!selected.some(g=>g[0]===honor)) selected.push([honor,honor,honor]);
++        for (const g of pungs) if (selected.length<3 && !selected.some(x=>groupKey(x)===groupKey(g))) selected.push(g);
++        if (selected.length===3) cores.push({ name: "碰碰和＋字牌刻子", groups: selected, extra: pungs });
++      }
++    }
++  }
++  for (let s=0;s<3;s++) {
++    if (!permitted(s*9)) continue;
++    for (const mixed of v.config.mode === "mcr" ? [false,true] : [false]) {
++      const inSuit = (t:number) => suit(t)===s || mixed && t>=27;
++      if (own.some(g=>g.some(t=>!inSuit(t)))) continue;
++      const groups=allGroups.filter(g=>g.every(inSuit)).sort((a,b)=>support(b)-support(a));
++      const selected=[...own];
++      for (const g of groups) if(selected.length<3 && !selected.some(x=>groupKey(x)===groupKey(g))) selected.push(g);
++      if (selected.length===3) cores.push({name: mixed ? "混一色方向" : "清一色方向",groups:selected,extra:groups,pairs:Array.from({length:limit},(_,t)=>t).filter(inSuit)});
++    }
++  }
++  const routes: RouteAdvice[] = [];
++  function assess(name:string, target:number[], core:number[]): RouteAdvice | null {
++    const c=counts(target), needed=c.flatMap((n,t)=>n>handCounts[t]?[{tile:t,count:n-handCounts[t],left:Math.max(0,4-known[t])}]:[]);
++    if (needed.some(n=>n.count>n.left)) return null;
++    const winTile=needed[0]?.tile ?? target.at(-1)!;
++    const ron=exactScore(v,target,v.melds,winTile,false), self=exactScore(v,target,v.melds,winTile,true);
++    if (!ron.legal && !self.legal) return null;
++    return { name, missing:needed.reduce((n,t)=>n+t.count,0), needed,keep:v.hand.filter(t=>{if(c[t]>0){c[t]--;return true;}return false;}),example:target,core,ron,self,winTile };
++  }
++  for (const core of cores) {
++    // A three-set core has only one free set; two incompatible calls block it.
++    const unmatched=[...fixedGroups(v)], base=[...core.groups];
++    for(const g of base){const at=unmatched.findIndex(x=>groupKey(x)===groupKey(g));if(at>=0)unmatched.splice(at,1);}
++    if(unmatched.length>1)continue;
++    const extras=unmatched.length?[unmatched[0]]:core.extra??allGroups.filter(g=>g.every(permitted));
++    const shortlist:{target:number[];missing:number}[]=[];
++    for(const extra of extras){
++      const base=concealedTarget(v,[...core.groups,extra]);if(!base)continue;
++      const c=counts(base), physical=counts([...base,...v.melds.flatMap(m=>m.tiles)]);let baseMissing=0,blocked=false;
++      for(let t=0;t<limit;t++){const need=Math.max(0,c[t]-handCounts[t]);if(need>4-known[t]){blocked=true;break;}baseMissing+=need;}
++      if(blocked)continue;
++      for(const pair of core.pairs??Array.from({length:limit},(_,t)=>t).filter(permitted)){
++        const pairNeed=Math.max(0,c[pair]+2-handCounts[pair]);
++        if(physical[pair]+2>4||pairNeed>4-known[pair])continue;
++        const missing=baseMissing-Math.max(0,c[pair]-handCounts[pair])+pairNeed;
++        if(shortlist.length<6 || missing<shortlist.at(-1)!.missing){const target=[...base,pair,pair];sortHand(target);shortlist.push({target,missing});shortlist.sort((a,b)=>a.missing-b.missing);if(shortlist.length>6)shortlist.pop();}
++      }
++    }
++    for(const candidate of shortlist){const route=assess(core.name,candidate.target,core.groups.flat());if(route){routes.push(route);break;}}
++  }
++  if (!v.melds.length) {
++    const pairs=Array.from({length:limit},(_,t)=>t).filter(t=>permitted(t)&&Math.max(0,2-handCounts[t])<=4-known[t]).sort((a,b)=>Math.min(2,handCounts[b])-Math.min(2,handCounts[a]) || (4-known[b])-(4-known[a]) || a-b).slice(0,7);
++    if(pairs.length===7){const target=pairs.flatMap(t=>[t,t]);sortHand(target);const r=assess("七对",target,target);if(r)routes.push(r);}
++  }
++  for (const wait of winningWaits(v).filter(w=>w.left>0&&(w.ron.legal||w.self.legal))) {
++    const complete=[...v.hand,wait.tile];sortHand(complete);
++    const score=wait.ron.legal?wait.ron:wait.self, fan=[...score.items].sort((a,b)=>b.value*b.count-a.value*a.count)[0]?.name??"合法和牌";
++    const r=assess(`现有听牌 · ${fan}`,complete,complete);if(r)routes.push(r);
++  }
++  const best=new Map<string,RouteAdvice>();
++  for(const route of routes.sort((a,b)=>a.missing-b.missing || Number(b.ron.legal)-Number(a.ron.legal) || b.ron.fan-a.ron.fan))if(!best.has(route.name))best.set(route.name,route);
++  return [...best.values()].slice(0,3);
++}
++function discardBasis(v: PublicView, style: PlayStyle) {
++  if(v.hand.length%3!==2)return {v,discard:undefined as number|undefined};
++  const choice=advise(v,{style,difficulty:"advanced"})[0];
++  if(!choice)return {v,discard:undefined as number|undefined};
++  const hand=[...v.hand];hand.splice(hand.indexOf(choice.tile),1);
++  return {discard:choice.tile,v:{...v,hand,players:v.players.map((p,i)=>i===v.self?{...p,river:[...p.river,choice.tile]}:p)}};
++}
++function afterAction(v:PublicView,a:Action):PublicView {
++  const hand=[...v.hand],melds=v.melds.map(m=>({...m,tiles:[...m.tiles]}));
++  if(a.type==="addedKong"){
++    hand.splice(hand.indexOf(a.tile!),1);const m=melds[a.meldIndex!];m.kind="kong";m.added=true;m.tiles.push(a.tile!);
++  }else{
++    const ts=a.type==="chow"?a.tiles!:Array(a.type==="pung"?3:4).fill(a.tile!);
++    const remove=[...ts];if(a.type!=="concealedKong")remove.splice(remove.indexOf(a.tile!),1);
++    for(const t of remove)hand.splice(hand.indexOf(t),1);
++    melds.push({kind:a.type==="chow"?"chow":a.type==="pung"?"pung":"kong",tiles:ts,from:v.lastDiscard?.from??v.self,concealed:a.type==="concealedKong"});
++  }
++  const claimed = ["chow","pung","kong"].includes(a.type);
++  return {...v,hand,melds,players:v.players.map((p,i)=>i===v.self?{...p,melds}:claimed&&i===v.lastDiscard?.from&&p.river.at(-1)===v.lastDiscard.tile?{...p,river:p.river.slice(0,-1)}:p)};
++}
++const names:Record<Action["type"],string>={pass:"过／继续摸打",win:"胡",chow:"吃",pung:"碰",kong:"杠",addedKong:"补杠",concealedKong:"暗杠"};
++export function actionGuidance(v:PublicView, actions:Action[], style:PlayStyle, currentWin?:WinScore):ActionAdvice[] {
++  if(!actions.length)return [];
++  const basis=discardBasis(v,style), before=evaluate(basis.v.hand,v.melds,v.config.mode==="mcr").shanten;
++  const scored:{advice:ActionAdvice;utility:number}[]=[];
++  for(const action of actions){
++    if(action.type==="pass")continue;
++    if(action.type==="win"){
++      scored.push({utility:10000,advice:{action,label:names.win,recommended:false,executable:true,score:currentWin,reasons:[`当前可合法胡牌${currentWin?v.config.scoring?`，${currentWin.fan}${v.config.mode==="mcr"?"分":"番"}`:`，固定胡牌分${currentWin.points}`:""}；兑现本次收益，避免后续被他家截胡或流局。`]}});continue;
++    }
++    const next=discardBasis(afterAction(v,action),style).v, after=evaluate(next.hand,next.melds,v.config.mode==="mcr").shanten;
++    const waits=after===0?winningWaits(next):[],available=waits.filter(w=>w.ron.legal||w.self.legal).reduce((n,w)=>n+w.left,0);
++    const opens=["chow","pung","kong"].includes(action.type)&&v.melds.every(m=>m.concealed);
++    const kong=["kong","addedKong","concealedKong"].includes(action.type);
++    const reasons=[`${names[action.type]}后${after===0?"结构听牌":`${after}向听`}（当前${before}向听）${after===0?`；常规合法和牌进张约${available}张`:""}。`];
++    if(opens)reasons.push(v.config.mode==="mcr"?"副露后不再计门前清／不求人，需保留其他可达到起胡门槛的番型。":"副露会锁定牌组，后续做七对或换做其他牌型的空间减少。");
++    if(kong)reasons.push("杠后补牌未知；杠上开花等事件番需实际发生才计入。");
++    if(action.type==="addedKong")reasons.push("补杠可能被抢杠胡，尤其注意已副露或晚局对手。");
++    const gated=v.config.mode==="mcr"&&v.config.scoring&&v.config.mcrEightPointMinimum!==false;
++    if(gated&&after===0&&!available)reasons.push("结构听牌但当前看不到仍有余张且达到8分的常规和牌进张，宜慎重副露。");
++    const utility=(before-after)*30+available*.3+(kong&&v.config.mode==="sichuan"?1:0)-(opens&&gated?2:0)-(gated&&after===0&&!available?100:0)-(action.type==="addedKong"?discardRisk(v,action.tile!).risk:0);
++    scored.push({utility,advice:{action,label:names[action.type],recommended:false,reasons,afterShanten:after,legalWaits:available,executable:true}});
++  }
++  const passReasons=[v.config.mode==="mcr"?"保留当前手牌与门清条件，继续观察后续进张；等待会消耗机会。":"保留当前手牌与变牌空间，继续观察后续进张；等待会消耗机会。"];
++  if(currentWin){
++    const higher=winningWaits(basis.v).filter(w=>w.left>0&&Math.max(w.self.fan,w.ron.fan)>currentWin.fan).slice(0,4);
++    passReasons.unshift(higher.length?`继续摸打后，${higher.map(w=>`${tileName(w.tile)}（常规最高${Math.max(w.self.fan,w.ron.fan)}${v.config.mode==="mcr"?"分":"番"}，约${w.left}张）`).join("、")}有提升空间；这些牌不保证能摸到或等到。`:"未发现仍有余张的更高分常规等待；追大通常还需改牌，存在被截胡或流局风险。");
++  }
++  scored.push({utility:0,advice:{action:{type:"pass"},label:actions.some(a=>a.type==="pass")?"过": "继续摸打（需先出牌）",recommended:false,reasons:passReasons,executable:actions.some(a=>a.type==="pass")}});
++  scored.sort((a,b)=>b.utility-a.utility);
++  scored[0].advice.recommended=true;
++  return scored.map(r=>r.advice);
++}
++const cache=new Map<string,AssistantReport>();
++export function buildAssistantReport(g:Game,seat:number,style:PlayStyle="balanced"):AssistantReport|null {
++  if(["exchange","void","end"].includes(g.phase)||g.players[seat].won)return null;
++  const v=publicView(g,seat), legal=g.phase==="turn"&&g.current===seat?ownActions(g,seat):g.pending?.responses[seat]===null?[...g.pending.actions[seat],{type:"pass"} as Action]:[];
++  const currentWin=legal.some(a=>a.type==="win")?winScore(g,seat,g.phase==="turn"):undefined;
++  const key=JSON.stringify([v,legal,currentWin,style]),old=cache.get(key);if(old)return structuredClone(old);
++  const basis=discardBasis(v,style),shanten=evaluate(basis.v.hand,basis.v.melds,v.config.mode==="mcr").shanten;
++  const report:AssistantReport={shanten,basisDiscard:basis.discard,waits:shanten===0?winningWaits(basis.v):[],routes:directionRoutes(basis.v),actions:actionGuidance(v,legal,style,currentWin),
++    eightPointMinimum:v.config.mode==="mcr"&&v.config.scoring&&v.config.mcrEightPointMinimum!==false,
++    notes:["目标距离是示例成牌还需补入的张数，不等于向听数；示例不保证可达。","示例分数已按实际番型互斥规则计算，可见绝张按当前公开牌判断；不预计杠上花、海底等未来事件番。"]};
++  if(cache.size>=64)cache.clear();cache.set(key,structuredClone(report));return report;
++}
+diff --git a/src/engine/game.ts b/src/engine/game.ts
+--- a/src/engine/game.ts
++++ b/src/engine/game.ts
+@@ -34,6 +34,8 @@
+     wind: g.wind,
+     lastTile: g.pending?.tile,
+     lastFrom: g.pending?.from,
++    drawState: g.drawState ? { ...g.drawState } : null,
++    drawnTile: g.drawnTile,
+   });
+ }
+ function rng(g: Game) {
+@@ -81,6 +83,7 @@
+     wind: config.mode === "mcr" ? Math.floor((round - 1) / 4) % 4 : 0,
+     exchangeDir: 0,
+     drawnTile: null,
++    drawState: null,
+     kongDraw: false,
+     discardCount: 0,
+     callCount: 0,
+@@ -105,6 +108,9 @@
+   g.drawnTile = g.wall.pop()!;
+   g.players[dealer].hand.push(g.drawnTile);
+   g.players.forEach((p) => sortHand(p.hand));
++  if (g.phase === "turn") {
++    g.drawState = { actor: dealer, id: 0, separated: true };
++  }
+   g.exchangeDir = [1, 2, 3][Math.floor((entropy ? entropy() : rng(g)) * 3)];
+   log(
+     g,
+@@ -180,6 +186,8 @@
+     g,
+     `定缺：${g.players.map((p) => `${p.name}缺${["万", "筒", "条"][p.voidSuit]}`).join(" / ")}`,
+   );
++  emit(g, { actor: g.current, kind: "draw" });
++  g.drawState = { actor: g.current, id: g.events!.at(-1)!.id, separated: true };
+   frame(g, "四家定缺");
+ }
+ function activeNext(g: Game, i: number) {
+@@ -309,7 +317,19 @@
+   }
+   g.phase = rob ? "rob" : "claim";
+ }
+-export function discard(g: Game, i: number, t: Tile) {
++export function hasSeparateDraw(g: Pick<Game, "phase" | "current" | "drawnTile" | "drawState">, i: number) {
++  return g.phase === "turn" && g.current === i && g.drawnTile !== null &&
++    (g.drawState === undefined || !!g.drawState && g.drawState.actor === i && g.drawState.separated);
++}
++export function integrateDraw(g: Game, i: number, drawId?: number) {
++  if (!hasSeparateDraw(g, i) || g.players[i].won || drawId !== undefined && drawId !== (g.drawState?.id ?? 0)) throw Error("当前没有可归入手牌的新摸牌");
++  g.drawState = { actor: i, id: g.drawState?.id ?? 0, separated: false };
++  emit(g, { actor: i, kind: "integrate" });
++  log(g, `${g.players[i].name}将新摸牌归入手牌`);
++  frame(g, `${g.players[i].name} · 归入手牌`);
++  g.frames.at(-1)!.layoutOnly = true;
++}
++export function discard(g: Game, i: number, t: Tile, fromDraw?: boolean) {
+   if (
+     g.phase !== "turn" ||
+     g.current !== i ||
+@@ -317,16 +337,21 @@
+   )
+     throw Error("当前不能打这张牌");
+   const p = g.players[i];
++  const separate = hasSeparateDraw(g, i), direct = fromDraw ?? (separate && t === g.drawnTile);
++  if (direct && (!separate || t !== g.drawnTile)) throw Error("这张牌不是右侧的新摸牌");
++  if (separate && !direct && t === g.drawnTile && p.hand.filter(x => x === t).length < 2) throw Error("请选择右侧的新摸牌打出");
++  if (separate && !direct) integrateDraw(g, i);
+   p.hand.splice(p.hand.indexOf(t), 1);
+   p.discards ??= historicalDiscards(g, i);
+   p.river.push(t);
+   p.discards.push(t);
+   g.discardCount++;
+-  log(g, `${p.name}打出${tileName(t)}`);
+-  emit(g, { actor: i, kind: "discard", tile: t });
++  log(g, `${p.name}打出${tileName(t)}（${direct ? "摸切" : "手切"}）`);
++  emit(g, { actor: i, kind: "discard", tile: t, fromDraw: direct });
++  g.drawState = null;
+   setPending(g, t, i);
+   g.drawnTile = null;
+-  frame(g, `${p.name} · 打${tileName(t)}`);
++  frame(g, `${p.name} · ${direct ? "摸切" : "手切"}${tileName(t)}`);
+ }
+ function pay(
+   g: Game,
+@@ -411,6 +436,8 @@
+   g.pending = null;
+   g.phase = "turn";
+   // Human draw is visible; computer draw labels do not reveal its identity.
++  emit(g, { actor: i, kind: "draw" });
++  g.drawState = { actor: i, id: g.events!.at(-1)!.id, separated: true };
+   log(g, `${g.players[i].name}${kong ? "杠后补牌" : "摸牌"}`);
+   frame(g, `${g.players[i].name} · ${kong ? "杠后补牌" : "摸牌"}`);
+ }
+@@ -679,6 +706,8 @@
+     wind: g.wind,
+     lastTile: g.pending?.tile,
+     lastFrom: g.pending?.from,
++    drawState: g.drawState ? { ...g.drawState } : g.drawState,
++    drawnTile: g.drawnTile,
+   };
+ }
+ export function advance(g: Game): boolean {
+diff --git a/src/engine/types.ts b/src/engine/types.ts
+--- a/src/engine/types.ts
++++ b/src/engine/types.ts
+@@ -118,14 +118,19 @@
+   wind: number;
+   lastTile?: Tile;
+   lastFrom?: number;
++  drawState?: DrawState | null;
++  drawnTile?: Tile | null;
++  layoutOnly?: boolean;
+ };
++export type DrawState = { actor: number; id: number; separated: boolean };
+ // Confirmed, public actions only. Concealed kongs never carry a tile.
+ export type TableEvent = {
+   id: number;
+   actor: number;
+-  kind: "discard" | "chow" | "pung" | "kong" | "win";
++  kind: "discard" | "chow" | "pung" | "kong" | "win" | "draw" | "integrate";
+   tile?: Tile;
+   self?: boolean;
++  fromDraw?: boolean;
+ };
+ export type Game = {
+   version: 3;
+@@ -139,6 +144,7 @@
+   wind: number;
+   exchangeDir: number;
+   drawnTile: Tile | null;
++  drawState?: DrawState | null;
+   kongDraw: boolean;
+   discardCount: number;
+   callCount: number;
+diff --git a/src/feedback/CenterFeedback.tsx b/src/feedback/CenterFeedback.tsx
+--- a/src/feedback/CenterFeedback.tsx
++++ b/src/feedback/CenterFeedback.tsx
+@@ -36,7 +36,7 @@
+   return <div className="center-marker notranslate" translate="no">
+     <span className="mode-seal">{mode === "sichuan" ? "川" : "国"}</span>
+     <div className="event-slot">
+-      <div ref={bubble} className={`event-bubble ${activity ? "is-visible" : ""} ${activity?.kind === "win" ? "event-win" : ""}`} aria-hidden={!activity}>
++      <div ref={bubble} data-kind={activity?.kind} className={`event-bubble ${activity ? "is-visible" : ""} ${activity?.kind === "win" ? "event-win" : ""}`} aria-hidden={!activity}>
+         <small>{activity ? actorName : ""}</small>
+         <strong>{activity ? eventLabel(activity) : ""}</strong>
+       </div>
+diff --git a/src/feedback/events.ts b/src/feedback/events.ts
+--- a/src/feedback/events.ts
++++ b/src/feedback/events.ts
+@@ -1,8 +1,9 @@
+ import type { TableEvent } from "../engine/types";
+ import { tileName } from "../engine/core";
+ 
+-export const eventLabel = (event: TableEvent) => ({ discard: "出牌", chow: "吃", pung: "碰", kong: "杠", win: event.self ? "自摸" : "胡" })[event.kind];
++export const eventLabel = (event: TableEvent) => ({ discard: event.fromDraw === undefined ? "出牌" : event.fromDraw ? "摸切" : "手切", draw: "摸牌", integrate: "归入手牌", chow: "吃", pung: "碰", kong: "杠", win: event.self ? "自摸" : "胡" })[event.kind];
+ export function eventSpeech(event: TableEvent): string {
++  if (event.kind === "draw" || event.kind === "integrate") return "";
+   if (event.kind !== "discard") return event.kind === "win" && event.self ? "自摸，胡" : eventLabel(event);
+   if (event.tile === undefined || event.tile < 0 || event.tile > 33) return "";
+   const name = tileName(event.tile).replace(/[1-9]/g, n => "一二三四五六七八九"[Number(n) - 1]);
+diff --git a/src/feedback/useTableFeedback.ts b/src/feedback/useTableFeedback.ts
+--- a/src/feedback/useTableFeedback.ts
++++ b/src/feedback/useTableFeedback.ts
+@@ -31,7 +31,7 @@
+     if (!fresh.length) return;
+     setActivity(fresh.at(-1)!);
+     fresh.forEach(e => {
+-      sound(e.kind, soundEnabled);
++      if (e.kind !== "integrate") sound(e.kind, soundEnabled);
+       if (voiceEnabled && unlocked.current && document.visibilityState !== "hidden") speaker.current!.announce(e);
+     });
+   }, [game, stream, replay, voiceEnabled, soundEnabled, sound]);
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -21,12 +21,17 @@
+   snapshot,
+   winScore,
+   allowedDiscards,
++  hasSeparateDraw,
++  integrateDraw,
+ } from "./engine/game";
+ import { advise, chooseOwn, chooseResponse, knownCounts } from "./engine/ai";
+ import { rules } from "./engine/rules";
+ import { BONUS, defaultConfig } from "./engine/types";
+ import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
+ import { Tile } from "./Tile";
++import { HandRow } from "./HandRow";
++import { ActionHints, StrategyPanel } from "./AssistantPanels";
++import { buildAssistantReport } from "./engine/assistant";
+ import { useTableFeedback } from "./feedback/useTableFeedback";
+ import { eventLabel } from "./feedback/events";
+ import { CenterFeedback } from "./feedback/CenterFeedback";
+@@ -119,6 +124,9 @@
+   activity,
+   difficulty,
+   onlineSeat,
++  separateDraw = false,
++  drawTile,
++  drawId,
+ }: {
+   p: Player;
+   seat: number;
+@@ -129,9 +137,13 @@
+   activity?: string;
+   difficulty: AiDifficulty;
+   onlineSeat?: RoomView["seats"][number];
++  separateDraw?: boolean;
++  drawTile?: number | null;
++  drawId?: number;
+ }) {
+   // Only one copy of the winning tile is public before the round ends.
+   const winningIndex = p.won ? p.hand.lastIndexOf(winningTile ?? -1) : -1;
++  const drawnIndex = separateDraw && !p.won ? reveal && drawTile != null ? p.hand.lastIndexOf(drawTile) : p.hand.length - 1 : -1;
+   const controller = onlineSeat?.human
+     ? onlineSeat.autoplay ? `电脑托管 · ${difficultyName(difficulty)}` : "在线玩家"
+     : `电脑 · ${difficultyName(difficulty)}`;
+@@ -161,6 +173,7 @@
+       <span className="player-action" aria-hidden={!activity}>{activity ?? ""}</span>
+       <div className="opponent-hand">
+         {p.hand.map((t, k) => (
++          k === drawnIndex ? <span className="opponent-draw" key={`draw:${drawId ?? 0}`}><Tile tile={t} small hidden={!reveal} drawn /><small>摸</small></span> :
+           <Tile key={k} tile={t} small hidden={!reveal && k !== winningIndex} />
+         ))}
+       </div>
+@@ -441,7 +454,8 @@
+         ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; voiceChoice: string; voiceRate: number; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
+     );
+   const [paused, setPaused] = useState(false),
+-    [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
++    [tab, setTab] = useState<"advice" | "strategy" | "log" | "rules">("advice");
++  const [visualHandOrder, setVisualHandOrder] = useState<number[]>([]);
+   const [replay, setReplay] = useState<Frame[] | null>(null),
+     [replayIndex, setReplayIndex] = useState(0),
+     [replayPlay, setReplayPlay] = useState(false),
+@@ -557,6 +571,8 @@
+         : [],
+     [game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
+   );
++  const guidance = useMemo(() => prefs.hints && game && !replay ? online.session ? online.guidance : buildAssistantReport(game, 0, prefs.assistantStyle) : null,
++    [prefs.hints, game, replay, prefs.assistantStyle, online.session, online.guidance]);
+   const waiting = useMemo(() => {
+     if (
+       !game ||
+@@ -593,6 +609,12 @@
+   const humanWinningIndex = game?.players[0].hand.lastIndexOf(
+     game.winners.find((w) => w.player === 0)?.tile ?? -1,
+   ) ?? -1;
++  const handStream = `${online.session?.id ?? "solo"}:${game?.round ?? 0}:${game?.seed ?? 0}`;
++  const liveDrawIndex = game && hasSeparateDraw(game, 0) ? game.players[0].hand.lastIndexOf(game.drawnTile!) : -1;
++  const displayDraw = display && display.phase === "turn" && display.drawnTile != null && display.current === 0 &&
++    (display.drawState === undefined || !!display.drawState?.separated);
++  const humanDrawIndex = hideWonHand ? -1 : replay ? displayDraw ? display!.players[0].hand.lastIndexOf(display!.drawnTile!) : -1 : liveDrawIndex;
++  useEffect(() => { setSelected([]); }, [game?.players[0].hand.join(",")]);
+   const start = (c: Config) => {
+     if (createName !== null) {
+       void online.enter(createName, c);
+@@ -609,8 +631,8 @@
+     sound("start", prefs.sound);
+   };
+   const submitDiscard = () => {
+-    if (game && ourTurn && selected.length === 1)
+-      change((g) => discard(g, 0, g.players[0].hand[selected[0]]), "discard", { type: "discard", tile: game.players[0].hand[selected[0]] });
++    if (game && ourTurn && selected.length === 1 && allowedDiscards(game, 0).includes(game.players[0].hand[selected[0]]))
++      change((g) => discard(g, 0, g.players[0].hand[selected[0]], selected[0] === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[selected[0]], fromDraw: selected[0] === liveDrawIndex });
+   };
+   const pick = (k: number) => {
+     if (!game || replay) return;
+@@ -626,7 +648,7 @@
+     }
+     if (ourTurn) {
+       if (selected.length === 1 && selected[0] === k)
+-        change((g) => discard(g, 0, g.players[0].hand[k]), "discard", { type: "discard", tile: game.players[0].hand[k] });
++        change((g) => discard(g, 0, g.players[0].hand[k], k === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[k], fromDraw: k === liveDrawIndex });
+       else setSelected([k]);
+     }
+   };
+@@ -642,7 +664,7 @@
+       if (e.code === "Space" && ourTurn) {
+         e.preventDefault();
+         submitDiscard();
+-      } else if (/^[1-9]$/.test(e.key) && ourTurn) pick(+e.key - 1);
++      } else if (/^[1-9]$/.test(e.key) && ourTurn) pick(visualHandOrder[+e.key-1] ?? +e.key-1);
+     }
+     window.addEventListener("keydown", key);
+     return () => window.removeEventListener("keydown", key);
+@@ -824,6 +846,9 @@
+                   <Opponent
+                     p={display.players[2]}
+                     seat={2}
++                    separateDraw={display.phase === "turn" && display.current === 2 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
++                    drawTile={display.drawnTile}
++                    drawId={display.drawState?.id}
+                     difficulty={game.config.aiDifficulty ?? "advanced"}
+                     onlineSeat={online.session ? online.room?.seats[2] : undefined}
+                     activity={feedback.activity?.actor === 2 ? eventLabel(feedback.activity) : undefined}
+@@ -835,6 +860,9 @@
+                   <Opponent
+                     p={display.players[3]}
+                     seat={3}
++                    separateDraw={display.phase === "turn" && display.current === 3 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
++                    drawTile={display.drawnTile}
++                    drawId={display.drawState?.id}
+                     difficulty={game.config.aiDifficulty ?? "advanced"}
+                     onlineSeat={online.session ? online.room?.seats[3] : undefined}
+                     activity={feedback.activity?.actor === 3 ? eventLabel(feedback.activity) : undefined}
+@@ -846,6 +874,9 @@
+                   <Opponent
+                     p={display.players[1]}
+                     seat={1}
++                    separateDraw={display.phase === "turn" && display.current === 1 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
++                    drawTile={display.drawnTile}
++                    drawId={display.drawState?.id}
+                     difficulty={game.config.aiDifficulty ?? "advanced"}
+                     onlineSeat={online.session ? online.room?.seats[1] : undefined}
+                     activity={feedback.activity?.actor === 1 ? eventLabel(feedback.activity) : undefined}
+@@ -914,33 +945,17 @@
+                         <span className="round-delta">本局 {amount(display.players[0].roundDelta)}</span>
+                       </b>
+                     </div>
++                    {prefs.hints && !replay && !hideWonHand && !["end","exchange","void"].includes(game.phase) && <div className="plan-preview">
++                      {guidance ? <button onClick={()=>setTab("strategy")}>{guidance.routes[0] ? `做牌主线：${guidance.routes[0].name} · 目标还需补${guidance.routes[0].missing}张 · 查看番型与缺牌 →` : "暂无常见做牌主线 · 查看当前等待与门槛 →"}</button> : <span>{online.adviceError ? "做牌建议暂不可用，请查看助手提示" : "正在更新做牌方向…"}</span>}
++                    </div>}
+                     <Melds p={display.players[0]} reveal={!hideWonHand} />
+-                    <div className="human-hand">
+-                      {display.players[0].hand.map((t, k) => {
+-                        const allowed =
+-                          (game.phase === "exchange" && (!online.session || (!!online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy))) ||
+-                          (ourTurn && allowedDiscards(game, 0).includes(t));
+-                        return (
+-                          <Tile
+-                            key={k}
+-                            tile={t}
+-                            hidden={hideWonHand && k !== humanWinningIndex}
+-                            selected={!replay && selected.includes(k)}
+-                            suggested={!replay && analysis[0]?.tile === t}
+-                            dim={!replay && ourTurn && !allowed}
+-                            disabled={!allowed || !!replay}
+-                            onClick={() => pick(k)}
+-                            drawn={
+-                              !replay &&
+-                              game.drawnTile === t &&
+-                              game.current === 0 &&
+-                              game.phase === "turn" &&
+-                              display.players[0].hand.lastIndexOf(t) === k
+-                            }
+-                          />
+-                        );
+-                      })}
+-                    </div>
++                    <HandRow hand={display.players[0].hand} stream={replay ? `${handStream}:replay:${replayIndex}` : handStream}
++                      drawIndex={humanDrawIndex} drawId={display.drawState?.id ?? 0} selected={selected} suggested={analysis[0]?.tile}
++                      canPick={k => !replay && ((game.phase === "exchange" && (!online.session || (!!online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy))) || (ourTurn && allowedDiscards(game, 0).includes(display.players[0].hand[k])))}
++                      dim={k => !replay && !!ourTurn && !allowedDiscards(game, 0).includes(display.players[0].hand[k])}
++                      hidden={k => hideWonHand && k !== humanWinningIndex} onPick={pick} onSelect={k => setSelected([k])} onOrderChange={setVisualHandOrder}
++                      editable={!replay && !hideWonHand && ["turn", "claim", "rob"].includes(game.phase) && !online.busy}
++                      canIntegrate={!!ourTurn} replay={!!replay} onIntegrate={() => change(g => integrateDraw(g, 0, g.drawState?.id ?? 0), "integrate", {type: "integrateDraw", drawId: game.drawState?.id ?? 0})} />
+                   </div>
+                 </>
+               ) : (
+@@ -1084,6 +1099,7 @@
+                 )}
+               </div>
+             </div>
++            {guidance && prefs.hints && !replay && (claim.length > 0 || !!ourTurn && playerActions.length > 0) && <ActionHints report={guidance} config={game!.config} />}
+             {replay && (
+               <div className="replay-bar">
+                 <button
+@@ -1174,7 +1190,7 @@
+           </div>
+           <aside>
+             <div className="aside-tabs">
+-              {(["advice", "log", "rules"] as const).map((t) => (
++              {(["advice", "strategy", "log", "rules"] as const).map((t) => (
+                 <button
+                   className={tab === t ? "active" : ""}
+                   key={t}
+@@ -1182,7 +1198,7 @@
+                 >
+                   {t === "advice"
+                     ? "打牌助手"
+-                    : t === "log"
++                    : t === "strategy" ? "做牌方向" : t === "log"
+                       ? "对局记录"
+                       : "规则说明"}
+                 </button>
+@@ -1192,7 +1208,7 @@
+               <div className="advice-panel">
+                 <span className="eyebrow">A LITTLE CLARITY</span>
+                 <h3>{replay ? "先看选择，再看结果。" : "下一张，怎么打？"}</h3>
+-                {online.session && prefs.hints && ourTurn && (online.adviceLoading || online.adviceError) &&
++                {online.session && prefs.hints && (online.adviceLoading || online.adviceError) &&
+                   <p className="tiny" role="status">{online.adviceError || "后端正在重新计算当前风格的建议…"}</p>}
+                 {!prefs.hints ? (
+                   <p className="muted">
+@@ -1306,7 +1322,7 @@
+                 <div className="storage-tools">
+                   <button
+                     disabled={!!online.session || !game}
+-                    onClick={() => game && download(game, "一桌麻将-存档.json")}
++                    onClick={() => game && download(game, "mahjong-save.json")}
+                   >
+                     下载存档
+                   </button>
+@@ -1345,6 +1361,10 @@
+                   </label>
+                 </div>
+               </div>
++            ) : tab === "strategy" ? (
++              <div className="advice-panel strategy-tab">
++                {!prefs.hints ? <p>打开“提示”查看实时做牌方向。</p> : guidance ? <StrategyPanel report={guidance} config={game!.config} /> : <p>{online.adviceError || (game?.phase === "end" ? "本局已结束，可打开牌谱回放。" : "进入行牌阶段后展示做牌方向与实际听牌分数。")}</p>}
++              </div>
+             ) : tab === "log" ? (
+               <div className="log-panel">
+                 <h3>这局发生了什么</h3>
+@@ -1365,7 +1385,7 @@
+                           frames: game.frames,
+                           payments: game.payments,
+                         },
+-                        "一桌麻将-牌谱.json",
++                        "mahjong-replay.json",
+                       )
+                     }
+                   >
+diff --git a/src/online/protocol.ts b/src/online/protocol.ts
+--- a/src/online/protocol.ts
++++ b/src/online/protocol.ts
+@@ -5,7 +5,8 @@
+   | { type: "exchange"; tiles: number[] }
+   | { type: "void"; suit: number }
+   | { type: "difficulty"; difficulty: AiDifficulty }
+-  | { type: "discard"; tile: number }
++  | { type: "discard"; tile: number; fromDraw?: boolean }
++  | { type: "integrateDraw"; drawId: number }
+   | { type: "act" | "claim"; action: Action };
+ export type RoomView = {
+   id: string;
+diff --git a/src/online/useRoom.ts b/src/online/useRoom.ts
+--- a/src/online/useRoom.ts
++++ b/src/online/useRoom.ts
+@@ -2,6 +2,7 @@
+ import type { Config, PlayStyle } from "../engine/types";
+ import type { RoomCommand, RoomSession, RoomView } from "./protocol";
+ import type { Advice } from "../engine/ai";
++import type { AssistantReport } from "../engine/assistant";
+ import { RoomUpdates } from "./updates";
+ const KEY = "quiet-mahjong-online-session";
+ const base = (import.meta.env.VITE_ONLINE_API_URL ?? "").replace(/\/$/, "");
+@@ -15,7 +16,7 @@
+   const [networkError, setNetworkError] = useState("");
+   const [pending, setPending] = useState<RoomCommand | null>(null);
+   const [adviceStyle, setAdviceStyle] = useState<PlayStyle>("balanced");
+-  const [advice, setAdvice] = useState<{stage: string; style: PlayStyle; items: Advice[]}>({stage: "",style: "balanced",items: []});
++  const [advice, setAdvice] = useState<{stage: string; style: PlayStyle; items: Advice[]; guidance: AssistantReport | null}>({stage: "",style: "balanced",items: [], guidance: null});
+   const [adviceLoading, setAdviceLoading] = useState(false), [adviceError, setAdviceError] = useState("");
+   const [busy, setBusy] = useState(false);
+   const [connected, setConnected] = useState(false);
+@@ -35,7 +36,7 @@
+         body: data === undefined ? undefined : JSON.stringify(data), signal: controller.signal });
+       const body = await r.json();
+       if (!r.ok) throw new Error(body.error ?? "联机服务未就绪");
+-      return body as { room: RoomView; token?: string; stage?: string; analysis?: Advice[] };
++      return body as { room: RoomView; token?: string; stage?: string; analysis?: Advice[]; guidance?: AssistantReport | null };
+     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
+   }
+   function remember(s: RoomSession | null) {
+@@ -95,18 +96,19 @@
+     return () => { stopped = true; clearTimeout(timer); activePoll.current?.abort(); };
+   }, [session?.id, session?.token]);
+   useEffect(() => {
+-    if (!session || !room?.game || room.game.phase !== "turn" || room.game.current !== 0 || room.game.players[0].won) {
++    if (!session || !room?.game || ["exchange", "void", "end"].includes(room.game.phase) || room.game.players[0].won) {
+       setAdviceLoading(false); return;
+     }
+     let cancelled = false; const controller = new AbortController(), stage = room.stage;
+     setAdviceLoading(true); setAdviceError("");
+     void request(`/api/rooms/${session.id}/analyze`, session, { style: adviceStyle, stage }, controller.signal)
+-      .then(r => { if (!cancelled && r.stage === stage) setAdvice({stage,style:adviceStyle,items:r.analysis ?? []}); })
++      .then(r => { if (!cancelled && r.stage === stage) setAdvice({stage,style:adviceStyle,items:r.analysis ?? [], guidance:r.guidance ?? null}); })
+       .catch(e => { if (!cancelled) setAdviceError(e instanceof Error ? e.message : "建议计算失败"); })
+       .finally(() => { if (!cancelled) setAdviceLoading(false); });
+     return () => { cancelled = true; controller.abort(); };
+   }, [session?.token, room?.stage, adviceStyle]);
+   function forget() { remember(null); setRoom(null); setConnected(false); setError(""); }
+   return { session, room, error: error || networkError, busy, pending, connected, enter, send, forget, setAdviceStyle, adviceLoading, adviceError,
++    guidance: advice.stage === room?.stage && advice.style === adviceStyle ? advice.guidance : null,
+     advice: advice.stage === room?.stage && advice.style === adviceStyle ? advice.items : [] };
+ }
+diff --git a/src/style.css b/src/style.css
+--- a/src/style.css
++++ b/src/style.css
+@@ -1715,3 +1715,62 @@
+   .tile, .meld, .last-discard, .event-bubble, .action-flash { animation: none !important; transition: none !important; }
+ }
+ .is-replay .tile, .is-replay .meld, .is-replay .last-discard { animation: none; }
++
++/* Draw identity is a separate slot; hand ordering never changes game state. */
++.hand-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 5px; }
++.hand-tools button { min-height: 36px; font-size: 13px; padding: 7px 10px; }
++.hand-tools span { font-size: 12px; color: #536b4b; }
++.hand-tools .integrate-draw { margin-left: auto; border-color: #b7954d; background: #fff4d7; }
++.human-hand { display: flex; flex-wrap: nowrap; gap: 0; padding-top: 18px; }
++.hand-held { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 5px; min-width: 0; }
++.hand-card { display: flex; flex: 0 0 auto; }
++.hand-card[draggable="true"] { cursor: grab; }
++.hand-card[draggable="true"] .tile { cursor: grab; }
++.drawn-zone { position: relative; display: flex; flex: 0 0 auto; margin-left: 24px; padding: 5px; border-radius: 9px; background: #f7df9d; box-shadow: 0 0 0 2px #b89748; }
++.drawn-zone .tile.drawn { margin-left: 0; animation: none; }
++.drawn-label { position: absolute; top: -22px; left: -4px; right: -4px; text-align: center; font-size: 12px; font-weight: 700; color: #78581d; white-space: nowrap; }
++.fresh-draw { animation: draw-arrival .65s cubic-bezier(.17,.8,.25,1); }
++.opponent-draw { display: inline-flex; position: relative; flex: 0 0 auto; margin: 0 2px 0 8px; padding: 2px; background: #f7df9d; border-radius: 5px; animation: draw-arrival .65s ease-out; }
++.opponent-draw .tile.drawn { margin-left: 0; }
++.opponent-draw > small { position: absolute; right: 0; bottom: -14px; font-size: 10px; color: #78581d; }
++.event-bubble[data-kind="integrate"] strong { font-size: 18px; }
++@keyframes draw-arrival { 0% { opacity: .15; transform: translate(26px,-24px) rotate(8deg) scale(.82); } 65% { opacity: 1; transform: translate(0,-5px) rotate(0) scale(1.06); } 100% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); } }
++.action-hints { margin-top: 14px; background: #fffdf6; border: 1px solid #d1dbc7; border-radius: 14px; padding: 18px; min-width: 0; }
++.action-hints h3 { font-size: 18px; margin: 0 0 12px; }
++.action-hints h3 small { font-size: 12px; color: #617369; font-weight: 400; margin-left: 8px; }
++.action-hint-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 10px; }
++.action-hint-list article { padding: 12px; border: 1px solid #e1e5d7; border-radius: 10px; }
++.action-hint-list .recommended-action { border-color: #7e9c80; background: #edf3e5; }
++.action-hint-list p { font-size: 13px; line-height: 1.7; margin: 8px 0 0; }
++.fan-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
++.fan-chips span { font-size: 12px; background: #fff9df; border-radius: 5px; padding: 4px 6px; }
++.strategy-panel { border-bottom: 1px solid var(--line); margin: 0 0 22px; padding-bottom: 18px; }
++.strategy-panel h3 { margin: 8px 0 12px; }
++.strategy-panel p { font-size: 13px; line-height: 1.7; }
++.threshold-note { padding: 10px; border-radius: 8px; background: #e9efdf; color: #355a3f; }
++.route-explanation, .strategy-limits { color: #697761; font-size: 12px !important; }
++.route-card { padding: 13px 10px; margin: 12px 0; border-radius: 10px; border: 1px solid #d9dfcc; background: #f5f6ed; }
++.route-heading strong { display: block; font-size: 15px; }
++.route-heading > span { display: block; margin-top: 5px; color: #896923; font-size: 12px; }
++.strategy-panel h4 { font-size: 13px; margin: 12px 0 7px; }
++.plan-tiles { display: flex; gap: 3px; flex-wrap: wrap; --small-w: 26px; --small-h: 37px; }
++.needed-tiles { display: flex; gap: 6px; flex-wrap: wrap; }
++.needed-tiles > span { border-radius: 6px; background: #fffaf0; padding: 5px 7px; font-size: 13px; }
++.needed-tiles small { display: block; font-size: 10px; color: #75806b; margin-top: 3px; }
++.route-card summary { cursor: pointer; margin-top: 12px; font-size: 12px; color: #315d45; }
++.wait-row { display: grid; grid-template-columns: 32px 42px 1fr 1fr; gap: 5px; align-items: center; border-bottom: 1px solid #e2e5d9; padding: 6px 0; font-size: 12px; }
++.wait-row .tile.small { --small-w: 27px; --small-h: 38px; }
++.wait-row small { display: block; font-size: 10px; margin-top: 3px; }
++.wait-heading { font-weight: 600; color: #617369; }
++.legal-score { color: #236843; }
++.short-score { color: #a64b35; }
++@media (max-width: 1340px) { .advice-panel > .strategy-panel { grid-column: 1 / -1; } .strategy-panel { display: block; } .route-card { max-width: 680px; } }
++@media (orientation: landscape) and (max-height: 600px) { .drawn-zone { margin-left: 16px; padding: 3px; } .hand-held { gap: 4px; } }
++@media (prefers-reduced-motion: reduce) { .fresh-draw, .opponent-draw { animation: none; } }
++.plan-preview { min-height: 40px; display: flex; align-items: center; margin: 0 0 10px; }
++.plan-preview button { font-size: 13px; padding: 8px 11px; background: #f3f5e9; color: #365e42; border-color: #cbd7bf; }
++.plan-preview > span { font-size: 12px; color: #75806b; }
++.strategy-tab { display: block !important; }
++.aside-tabs button { padding-inline: 4px; }
++
++.drawn-zone .tile.drawn:not(.selected), .is-replay .drawn-zone .tile.drawn, .is-replay .opponent-draw { animation: none; }
+diff --git a/tests/client-startup.test.ts b/tests/client-startup.test.ts
+--- a/tests/client-startup.test.ts
++++ b/tests/client-startup.test.ts
+@@ -102,3 +102,55 @@
+   }
+   assert.ok(new Set(decisions).size > 1);
+ });
++
++test("Real client separates the draw, moves a hand tile, persists order and integrates without taking a turn",async()=>{
++  await initCore();
++  const errors:unknown[]=[],logs=new VirtualConsole();logs.on("jsdomError",e=>errors.push(e));
++  const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:"https://mahjong.test/",runScripts:"outside-only",pretendToBeVisual:true,virtualConsole:logs});
++  const win=dom.window;Object.defineProperty(win,"structuredClone",{value:structuredClone});win.addEventListener("error",e=>{errors.push(e.error??e.message);e.preventDefault();});
++  const g=newGame({...defaultConfig,mode:"mcr"},undefined,4),snapshot=()=>JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!);
++  win.localStorage.setItem("quiet-mahjong-v3",JSON.stringify(g));win.localStorage.setItem("quiet-mahjong-preferences",JSON.stringify({hints:true,sound:false,voice:false}));
++  const button=(name:string)=>[...win.document.querySelectorAll<HTMLButtonElement>("button")].find(b=>b.textContent?.includes(name))!;
++  const order=()=>[...win.document.querySelectorAll(".hand-held .tile")].map(t=>t.textContent);
++  try{
++    win.eval(entry);await until(()=>!!win.document.querySelector(".drawn-zone")||errors.length>0,"separate right-hand draw");
++    assert.deepEqual(errors,[]);assert.equal(win.document.querySelectorAll(".hand-held .tile").length,13);
++    assert.equal(win.document.querySelectorAll(".drawn-zone .tile").length,1);
++    const first=order();button("手动理牌").click();await until(()=>!!button("右移"),"manual controls");
++    (win.document.querySelector(".hand-held .tile") as HTMLButtonElement).click();await until(()=>!button("右移").disabled,"select a tile to move");
++    button("右移").click();await until(()=>order()[0]===first[1]&&order()[1]===first[0],"manual tile move");
++    await until(()=>JSON.parse(win.localStorage.getItem("quiet-mahjong-hand-order")!).order[0]!==undefined,"order persisted");
++    assert.deepEqual(snapshot().players[0].hand,g.players[0].hand);assert.equal(snapshot().frames.length,g.frames.length);
++    button("新摸牌归入手牌").click();await until(()=>!win.document.querySelector(".drawn-zone"),"draw integrated");
++    assert.equal(win.document.querySelectorAll(".hand-held .tile").length,14);assert.deepEqual(snapshot().players[0].hand,g.players[0].hand);
++    assert.equal(snapshot().current,0);assert.equal(snapshot().discardCount,0);assert.equal(snapshot().drawState.separated,false);
++    assert.equal(snapshot().events.at(-1).kind,"integrate");
++    button("做牌方向").click();await until(()=>!!win.document.querySelector('[aria-label="实时做牌方向"]'),"strategy tab");
++    assert.ok(win.document.querySelector(".threshold-note")!.textContent!.includes("8分起胡"));assert.ok(win.document.querySelectorAll(".route-card").length>0);
++    assert.deepEqual(errors,[]);
++  }finally{dom.window.close();}
++});
++
++test("Real client sends distinct draw-discard and hand-discard sources for identical faces",async()=>{
++  await initCore();
++  for(const direct of [true,false]){
++    const g=newGame({...defaultConfig,mode:"mcr",scoring:false},undefined,4),hand=g.players[0].hand;
++    const duplicate=hand.find(t=>hand.filter(x=>x===t).length>=2);assert.notEqual(duplicate,undefined);g.drawnTile=duplicate!;
++    const errors:unknown[]=[],logs=new VirtualConsole();logs.on("jsdomError",e=>errors.push(e));
++    const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:"https://mahjong.test/",runScripts:"outside-only",pretendToBeVisual:true,virtualConsole:logs});
++    const win=dom.window;Object.defineProperty(win,"structuredClone",{value:structuredClone});win.addEventListener("error",e=>{errors.push(e.error??e.message);e.preventDefault();});
++    win.localStorage.setItem("quiet-mahjong-v3",JSON.stringify(g));win.localStorage.setItem("quiet-mahjong-preferences",JSON.stringify({hints:false,sound:false,voice:false,speed:10000}));
++    try{
++      win.eval(entry);await until(()=>!!win.document.querySelector(".drawn-zone")||errors.length>0,"draw source fixture");assert.deepEqual(errors,[]);
++      await until(()=>!!win.localStorage.getItem("quiet-mahjong-hand-order"),"initial hand effects settled");
++      await new Promise(resolve=>setTimeout(resolve,10));
++      const drawn=win.document.querySelector<HTMLButtonElement>(".drawn-zone .tile")!;
++      const chosen=direct?drawn:[...win.document.querySelectorAll<HTMLButtonElement>(".hand-held .tile")].find(t=>t.textContent===drawn.textContent)!;assert.ok(chosen);
++      chosen.click();await until(()=>[...win.document.querySelectorAll("button")].some(b=>b.textContent?.startsWith("打出 ")),"discard selection");
++      [...win.document.querySelectorAll<HTMLButtonElement>("button")].find(b=>b.textContent?.startsWith("打出 "))!.click();
++      await until(()=>JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!).discardCount===1,"discard saved");
++      const saved=JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!);assert.equal(saved.events.at(-1).fromDraw,direct);assert.equal(saved.events.at(-1).tile,duplicate);
++      assert.equal(saved.events.some((e:{kind:string})=>e.kind==="integrate"),!direct);assert.deepEqual(errors,[]);
++    }finally{dom.window.close();}
++  }
++});
+diff --git a/tests/engine.test.ts b/tests/engine.test.ts
+--- a/tests/engine.test.ts
++++ b/tests/engine.test.ts
+@@ -226,7 +226,7 @@
+   const g = rigDiscard("mcr");
+   delete g.events;
+   discard(g,0,0);
+-  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0}]);
++  assert.deepEqual(g.events,[{id:1,actor:0,kind:"discard",tile:0,fromDraw:true}]);
+ });
+ test("Sichuan simultaneous wins pay each winner and continue with two active players", () => {
+   const g = rigDiscard("sichuan");
+@@ -242,7 +242,7 @@
+   assert.equal(g.current, 3);
+   assert.equal(g.phase, "turn");
+   assert.equal(g.players[0].river.length, 0);
+-  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2]]);
++  assert.deepEqual(g.events!.map(e => [e.kind,e.actor]), [["discard",0],["win",1],["win",2],["draw",3]]);
+ });
+ test("MCR simultaneous win picks nearest player and ends immediately", () => {
+   const g = rigDiscard("mcr");
+@@ -295,7 +295,8 @@
+   assert.equal(g.players[0].score, 4);
+   assert.equal(g.players[2].score, 0);
+   assert.equal(g.kongDraw, true);
+-  assert.deepEqual(g.events!.at(-1), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
++  assert.deepEqual(g.events!.find(e=>e.kind==="kong"), { id: 1, actor: 0, kind: "kong" }, "concealed kong has no public tile");
++  assert.equal(g.events!.at(-1)!.kind, "draw");
+ });
+ test("Wall end performs ready, flower pig and tax refund accounting", () => {
+   const g = rigDiscard("sichuan");
+diff --git a/tests/enhancements.test.ts b/tests/enhancements.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/enhancements.test.ts
+@@ -0,0 +1,141 @@
++import test, { before } from "node:test";
++import assert from "node:assert/strict";
++import { initCore, counts, sortHand } from "../src/engine/core";
++import { newGame, publicView, integrateDraw, discard, hasSeparateDraw, winScore } from "../src/engine/game";
++import { winningWaits, directionRoutes, buildAssistantReport, actionGuidance } from "../src/engine/assistant";
++import { defaultConfig, type Meld } from "../src/engine/types";
++import { emptyContext, rules } from "../src/engine/rules";
++import { orderedCards, reconcileOrder } from "../src/HandRow";
++import { createRoomsApi, roomView, stageKey, tickRoom } from "../server/rooms";
++import { MemoryRoomStore } from "../server/store-memory";
++before(initCore);
++function tiles(s: string) { const out:number[]=[];for(const m of s.matchAll(/([1-9]+)([mps])|([ESWNCFP])/g)){if(m[1])for(const n of m[1])out.push("mps".indexOf(m[2])*9+Number(n)-1);else out.push(27+"ESWNCFP".indexOf(m[3]));}return out; }
++const game=()=>newGame({...defaultConfig,mode:"mcr"},undefined,719);
++const melds=():Meld[]=>["123m","456p","678s"].map(s=>({kind:"chow",tiles:tiles(s),from:3,concealed:false}));
++function waiting(){const g=game();g.players.forEach(p=>{p.melds=[];p.river=[];});g.players[0].hand=tiles("34p99s");g.players[0].melds=melds();g.current=1;g.drawnTile=null;g.drawState=null;return g;}
++
++test("Separate draw identity, manual integration and replay preserve the actual hand",()=>{
++  const g=game(), before=[...g.players[0].hand],stage=stageKey(g),id=g.drawState!.id;
++  assert.equal(hasSeparateDraw(g,0),true);assert.equal(hasSeparateDraw(g,1),false);
++  assert.throws(()=>integrateDraw(g,1,id));assert.throws(()=>integrateDraw(g,0,id+1));
++  integrateDraw(g,0,id);
++  assert.deepEqual(g.players[0].hand,before);assert.equal(hasSeparateDraw(g,0),false);
++  assert.equal(stageKey(g),stage);assert.equal(g.frames.at(-1)!.layoutOnly,true);
++  assert.deepEqual(g.events!.at(-1),{id:1,actor:0,kind:"integrate"});
++  assert.equal(g.frames.at(-1)!.drawnTile,g.drawnTile);
++  assert.equal(g.frames.at(-1)!.drawState!.separated,false);
++  assert.throws(()=>integrateDraw(g,0,id));
++  const t=g.drawnTile!;discard(g,0,t,false);
++  assert.deepEqual(g.events!.at(-1),{id:2,actor:0,kind:"discard",tile:t,fromDraw:false});
++});
++test("Draw discard and hand discard are distinct even for identical tile faces",()=>{
++  const a=game(),draw=a.drawnTile!;discard(a,0,draw,true);
++  assert.equal(a.events!.some(e=>e.kind==="integrate"),false);assert.equal(a.events!.at(-1)!.fromDraw,true);assert.ok(a.frames.at(-1)!.label.includes("摸切"));
++  const b=game(),other=b.players[0].hand.find(t=>t!==b.drawnTile)!;
++  const unchanged=JSON.stringify(b);assert.throws(()=>discard(b,0,other,true));assert.equal(JSON.stringify(b),unchanged);
++  b.players[0].hand=[...b.players[0].hand.slice(0,-1),b.drawnTile!];sortHand(b.players[0].hand);
++  if(b.players[0].hand.filter(t=>t===b.drawnTile).length<2)b.players[0].hand[0]=b.drawnTile!;
++  discard(b,0,b.drawnTile!,false);
++  assert.deepEqual(b.events!.map(e=>e.kind),["integrate","discard"]);assert.equal(b.events!.at(-1)!.fromDraw,false);
++});
++test("Manual order reconciles multisets and maps duplicate faces to canonical indices",()=>{
++  assert.deepEqual(reconcileOrder([3,1,3,7],[1,2,3,3]),[3,1,3,2]);
++  assert.deepEqual(orderedCards([1,1,2,4],1,[4,1,2]),[{tile:4,index:3},{tile:1,index:0},{tile:2,index:2}]);
++  assert.deepEqual(orderedCards([1,1,2,4],-1,[4,1,2]),[{tile:4,index:3},{tile:1,index:0},{tile:2,index:2},{tile:1,index:1}]);
++});
++test("Waiting guidance distinguishes structural waits, eight-point legal waits and fixed scores",()=>{
++  const g=waiting(),v=publicView(g,0),strict=winningWaits(v),w=strict.find(w=>w.tile===tiles("5p")[0])!;
++  assert.ok(w);assert.ok(w.ron.fan>0&&w.ron.fan<8);assert.equal(w.ron.legal,false);assert.equal(w.self.legal,false);
++  v.config={...v.config,mcrEightPointMinimum:false};const relaxed=winningWaits(v).find(x=>x.tile===w.tile)!;
++  assert.equal(relaxed.ron.legal,true);assert.equal(relaxed.ron.fan,w.ron.fan);
++  v.config={...v.config,scoring:false};const fixed=winningWaits(v).find(x=>x.tile===w.tile)!;
++  assert.equal(fixed.ron.legal,true);assert.equal(fixed.ron.points,v.config.base);
++});
++test("Visible last-copy scoring is included, without counting concealed copies as exposed",()=>{
++  const g=waiting(),tile=tiles("2p")[0],v=publicView(g,0),base=winningWaits(v).find(w=>w.tile===tile)!;
++  v.players[1].river=[tile,tile,tile];const last=winningWaits(v).find(w=>w.tile===tile)!;
++  assert.ok(last.ron.items.some(f=>f.name==="和绝张"));assert.equal(last.left,1);assert.ok(last.ron.fan>base.ron.fan);
++  v.players[1].river=[];v.players[1].melds=[{kind:"kong",tiles:[-1,-1,-1,-1],concealed:true,from:1}];
++  assert.equal(winningWaits(v).find(w=>w.tile===tile)!.ron.items.some(f=>f.name==="和绝张"),false);
++});
++test("Every direction example is a legal native-scored completion with honest missing counts",()=>{
++  for(const seed of [4,27,719]){
++    const g=newGame({...defaultConfig,mode:"mcr"},undefined,seed),v=publicView(g,0);v.hand.splice(v.hand.indexOf(g.drawnTile!),1);
++    const routes=directionRoutes(v);assert.ok(routes.length>0);
++    for(const r of routes){
++      const c=counts(r.example),owned=counts(v.hand);
++      assert.equal(r.missing,c.reduce((n,num,t)=>n+Math.max(0,num-owned[t]),0));
++      assert.equal(r.needed.reduce((n,x)=>n+x.count,0),r.missing);assert.ok(r.needed.every(n=>n.count<=n.left));
++      assert.ok(r.ron.legal||r.self.legal);assert.ok(r.example.length===14);
++      for(const self of [false,true]){
++        const hand=[...r.example];if(!self)hand.splice(hand.indexOf(r.winTile),1);
++        const actual=rules.mcr.score({...g.players[0],hand},g.config,{...emptyContext(r.winTile),self,seat:v.seat,wind:v.wind});
++        assert.deepEqual(self?r.self:r.ron,actual);
++      }
++    }
++  }
++});
++test("Assistant is read-only and insensitive to concealed opponent tiles and wall order",()=>{
++  const g=game(),before=JSON.stringify(g),first=buildAssistantReport(g,0,"defense");
++  assert.equal(JSON.stringify(g),before);assert.ok(first?.routes.length);
++  const hidden=structuredClone(g);for(let i=1;i<4;i++)hidden.players[i].hand=hidden.players[i].hand.map((_,k)=>(k+i)%34);
++  hidden.wall.reverse();hidden.seed=999;
++  assert.deepEqual(buildAssistantReport(hidden,0,"defense"),first);
++  first!.notes.push("consumer mutation");assert.notDeepEqual(buildAssistantReport(g,0,"defense"),first);
++});
++test("Action advice compares calls and pass, recommends legal win and describes higher-score risk",()=>{
++  const g=waiting(),v=publicView(g,0);v.lastDiscard={tile:tiles("5p")[0],from:3};
++  const before=JSON.stringify(v),actions=actionGuidance(v,[{type:"chow",tile:v.lastDiscard.tile,tiles:tiles("345p")},{type:"pass"}],"balanced");
++  assert.equal(JSON.stringify(v),before);assert.equal(actions.length,2);assert.equal(actions.filter(a=>a.recommended).length,1);
++  assert.equal(typeof actions.find(a=>a.action.type==="chow")!.afterShanten,"number");
++  const closed=publicView(game(),0);closed.hand=tiles("123m34p123sEECCF");closed.lastDiscard={tile:tiles("5p")[0],from:3};
++  const closedHints=actionGuidance(closed,[{type:"chow",tile:closed.lastDiscard.tile,tiles:tiles("345p")}],"balanced");
++  assert.ok(closedHints.flatMap(a=>a.reasons).some(s=>s.includes("副露")));
++  g.config.mcrEightPointMinimum=false;g.current=0;g.players[0].hand.push(tiles("5p")[0]);g.drawnTile=tiles("5p")[0];g.discardCount=5;
++  const score=winScore(g,0,true);assert.equal(score.legal,true);
++  const report=buildAssistantReport(g,0)!;assert.equal(report.actions[0].action.type,"win");assert.equal(report.actions[0].recommended,true);
++  assert.deepEqual(report.actions[0].score,score);assert.ok(report.actions.find(a=>a.action.type==="pass")!.reasons.some(s=>s.includes("风险")||s.includes("不保证")));
++});
++function request(path:string,token?:string,body?:unknown){return new Request("http://localhost/api/rooms"+path,{method:body===undefined?"GET":"POST",headers:{...(token?{Authorization:"Bearer "+token}:{}),...(body===undefined?{}:{"Content-Type":"application/json"})},body:body===undefined?undefined:JSON.stringify(body)});}
++test("Two online seats observe draw integration without its face or a renewed deadline; guidance endpoint is read-only",async()=>{
++  const store=new MemoryRoomStore(),now=1000000,api=createRoomsApi(store,()=>now);
++  const first=await(await api(request("",undefined,{name:"Host",config:{...defaultConfig,mode:"mcr"}}))).json(),id=first.room.id;
++  const guest=await(await api(request(`/${id}/join`,undefined,{name:"Guest"}))).json();
++  const cmd=(token:string,stage:string,command:unknown)=>api(request(`/${id}/command`,token,{stage,command,requestId:crypto.randomUUID()}));
++  assert.equal((await cmd(first.token,first.room.stage,{type:"start"})).status,200);
++  let r=(await store.load(id))!,stage=r.stage,deadline=r.deadline;
++  const hidden=roomView(r,1,now).game!;assert.equal(hidden.drawnTile,null);assert.deepEqual(hidden.drawState,{actor:3,id:0,separated:true});assert.ok(hidden.players[3].hand.every(t=>t===-1));
++  const snapshot=JSON.stringify(r),analysis=await api(request(`/${id}/analyze`,guest.token,{stage,style:"attack"}));
++  assert.equal(analysis.status,200);const analyzed=await analysis.json();assert.ok(analyzed.guidance?.routes.length);assert.deepEqual(analyzed.analysis,[]);assert.equal(JSON.stringify(await store.load(id)),snapshot);
++  assert.equal((await cmd(guest.token,stage,{type:"integrateDraw",drawId:0})).status,400);
++  assert.equal((await cmd(first.token,stage,{type:"integrateDraw",drawId:0})).status,200);
++  r=(await store.load(id))!;assert.equal(r.stage,stage);assert.equal(r.deadline,deadline);
++  tickRoom(r,now+10);assert.equal(r.deadline,deadline);assert.equal(r.stage,stage);
++  const view=roomView(r,1,now);assert.equal(view.game!.drawnTile,null);assert.equal(view.game!.drawState!.separated,false);
++  assert.deepEqual(view.game!.events!.at(-1),{id:1,actor:3,kind:"integrate"});assert.ok(view.game!.players[3].hand.every(t=>t===-1));
++  assert.equal((await cmd(first.token,stage,{type:"discard",tile:r.game!.drawnTile,fromDraw:false})).status,200);
++  r=(await store.load(id))!;assert.equal(roomView(r,1,now).game!.events!.filter(e=>e.kind==="discard")[0].fromDraw,false);
++});
++
++test("Open-hand routes preserve exposed sets and match actual scoring exclusions",()=>{
++  const g=waiting(),v=publicView(g,0),routes=directionRoutes(v);
++  for(const r of routes){
++    assert.equal(r.example.length,5);assert.ok(r.ron.legal||r.self.legal);
++    assert.ok(!r.ron.items.some(f=>f.name==="门前清"||f.name==="不求人"));
++    assert.ok(counts([...r.example,...v.melds.flatMap(m=>m.tiles)]).every(n=>n<=4));
++  }
++  // A less constrained open hand must have at least one concrete route.
++  v.melds=v.melds.slice(0,1);v.hand=tiles("123p123sEEFF");
++  const open=directionRoutes(v);assert.ok(open.length>0);
++  for(const r of open){assert.equal(r.example.length,11);assert.ok(r.ron.legal||r.self.legal);}
++});
++test("Sichuan guidance respects the missing suit and does not invent MCR-only menqing bonuses",()=>{
++  const g=newGame({...defaultConfig,mode:"sichuan",scoring:false},undefined,4);g.phase="turn";g.current=1;g.players[0].voidSuit=2;
++  g.players[0].hand=tiles("123m123p789p3345m");g.players[0].melds=[];
++  const v=publicView(g,0),report=buildAssistantReport(g,0)!;
++  assert.equal(report.eightPointMinimum,false);assert.ok(report.waits.length>0);assert.ok(report.waits.every(w=>w.tile<18));
++  for(const r of report.routes)assert.ok(r.example.every(t=>t<18));
++  v.lastDiscard={tile:0,from:3};v.hand=tiles("113m123p789p3345m");
++  const hints=actionGuidance(v,[{type:"pung",tile:0}],"balanced");
++  assert.equal(hints.flatMap(h=>h.reasons).some(s=>s.includes("门前清")||s.includes("不求人")),false);
++});
+diff --git a/tests/rooms.test.ts b/tests/rooms.test.ts
+--- a/tests/rooms.test.ts
++++ b/tests/rooms.test.ts
+@@ -95,7 +95,7 @@
+   assert.equal((await s.read(id, first.token)).seats[0].autoplay, false);
+   const r = (await s.store.load(id))!;
+   r.game!.current = 0; r.game!.phase = "turn"; r.game!.pending = null;
+-  r.stage = `${r.game!.round}:turn:0:${r.game!.frames.length}`;
++  r.stage = stageKey(r.game);
+   r.deadline = s.time - NETWORK_GRACE_MS - 1; r.botAt = s.time + 100000;
+   tickRoom(r, s.time); assert.equal(r.seats[0]!.auto, true);
+   await s.store.save({ ...r, version: r.version + 1 }, r.version);

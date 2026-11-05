@@ -95,7 +95,7 @@ test("Disconnected and timed-out humans are entrusted; resume preserves the hand
   assert.equal((await s.read(id, first.token)).seats[0].autoplay, false);
   const r = (await s.store.load(id))!;
   r.game!.current = 0; r.game!.phase = "turn"; r.game!.pending = null;
-  r.stage = `${r.game!.round}:turn:0:${r.game!.frames.length}`;
+  r.stage = stageKey(r.game);
   r.deadline = s.time - NETWORK_GRACE_MS - 1; r.botAt = s.time + 100000;
   tickRoom(r, s.time); assert.equal(r.seats[0]!.auto, true);
   await s.store.save({ ...r, version: r.version + 1 }, r.version);

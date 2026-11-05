@@ -34,6 +34,8 @@ function frame(g: Game, label: string) {
     wind: g.wind,
     lastTile: g.pending?.tile,
     lastFrom: g.pending?.from,
+    drawState: g.drawState ? { ...g.drawState } : null,
+    drawnTile: g.drawnTile,
   });
 }
 function rng(g: Game) {
@@ -81,6 +83,7 @@ export function newGame(config: Config, prior?: Game, seed?: number, entropy?: (
     wind: config.mode === "mcr" ? Math.floor((round - 1) / 4) % 4 : 0,
     exchangeDir: 0,
     drawnTile: null,
+    drawState: null,
     kongDraw: false,
     discardCount: 0,
     callCount: 0,
@@ -105,6 +108,9 @@ export function newGame(config: Config, prior?: Game, seed?: number, entropy?: (
   g.drawnTile = g.wall.pop()!;
   g.players[dealer].hand.push(g.drawnTile);
   g.players.forEach((p) => sortHand(p.hand));
+  if (g.phase === "turn") {
+    g.drawState = { actor: dealer, id: 0, separated: true };
+  }
   g.exchangeDir = [1, 2, 3][Math.floor((entropy ? entropy() : rng(g)) * 3)];
   log(
     g,
@@ -180,6 +186,8 @@ export function voidAll(g: Game, suits: number[]) {
     g,
     `定缺：${g.players.map((p) => `${p.name}缺${["万", "筒", "条"][p.voidSuit]}`).join(" / ")}`,
   );
+  emit(g, { actor: g.current, kind: "draw" });
+  g.drawState = { actor: g.current, id: g.events!.at(-1)!.id, separated: true };
   frame(g, "四家定缺");
 }
 function activeNext(g: Game, i: number) {
@@ -309,7 +317,19 @@ function setPending(
   }
   g.phase = rob ? "rob" : "claim";
 }
-export function discard(g: Game, i: number, t: Tile) {
+export function hasSeparateDraw(g: Pick<Game, "phase" | "current" | "drawnTile" | "drawState">, i: number) {
+  return g.phase === "turn" && g.current === i && g.drawnTile !== null &&
+    (g.drawState === undefined || !!g.drawState && g.drawState.actor === i && g.drawState.separated);
+}
+export function integrateDraw(g: Game, i: number, drawId?: number) {
+  if (!hasSeparateDraw(g, i) || g.players[i].won || drawId !== undefined && drawId !== (g.drawState?.id ?? 0)) throw Error("当前没有可归入手牌的新摸牌");
+  g.drawState = { actor: i, id: g.drawState?.id ?? 0, separated: false };
+  emit(g, { actor: i, kind: "integrate" });
+  log(g, `${g.players[i].name}将新摸牌归入手牌`);
+  frame(g, `${g.players[i].name} · 归入手牌`);
+  g.frames.at(-1)!.layoutOnly = true;
+}
+export function discard(g: Game, i: number, t: Tile, fromDraw?: boolean) {
   if (
     g.phase !== "turn" ||
     g.current !== i ||
@@ -317,16 +337,21 @@ export function discard(g: Game, i: number, t: Tile) {
   )
     throw Error("当前不能打这张牌");
   const p = g.players[i];
+  const separate = hasSeparateDraw(g, i), direct = fromDraw ?? (separate && t === g.drawnTile);
+  if (direct && (!separate || t !== g.drawnTile)) throw Error("这张牌不是右侧的新摸牌");
+  if (separate && !direct && t === g.drawnTile && p.hand.filter(x => x === t).length < 2) throw Error("请选择右侧的新摸牌打出");
+  if (separate && !direct) integrateDraw(g, i);
   p.hand.splice(p.hand.indexOf(t), 1);
   p.discards ??= historicalDiscards(g, i);
   p.river.push(t);
   p.discards.push(t);
   g.discardCount++;
-  log(g, `${p.name}打出${tileName(t)}`);
-  emit(g, { actor: i, kind: "discard", tile: t });
+  log(g, `${p.name}打出${tileName(t)}（${direct ? "摸切" : "手切"}）`);
+  emit(g, { actor: i, kind: "discard", tile: t, fromDraw: direct });
+  g.drawState = null;
   setPending(g, t, i);
   g.drawnTile = null;
-  frame(g, `${p.name} · 打${tileName(t)}`);
+  frame(g, `${p.name} · ${direct ? "摸切" : "手切"}${tileName(t)}`);
 }
 function pay(
   g: Game,
@@ -411,6 +436,8 @@ function draw(g: Game, i: number, kong = false) {
   g.pending = null;
   g.phase = "turn";
   // Human draw is visible; computer draw labels do not reveal its identity.
+  emit(g, { actor: i, kind: "draw" });
+  g.drawState = { actor: i, id: g.events!.at(-1)!.id, separated: true };
   log(g, `${g.players[i].name}${kong ? "杠后补牌" : "摸牌"}`);
   frame(g, `${g.players[i].name} · ${kong ? "杠后补牌" : "摸牌"}`);
 }
@@ -679,6 +706,8 @@ export function snapshot(g: Game): Frame {
     wind: g.wind,
     lastTile: g.pending?.tile,
     lastFrom: g.pending?.from,
+    drawState: g.drawState ? { ...g.drawState } : g.drawState,
+    drawnTile: g.drawnTile,
   };
 }
 export function advance(g: Game): boolean {

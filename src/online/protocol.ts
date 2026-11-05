@@ -5,7 +5,8 @@ export type RoomCommand =
   | { type: "exchange"; tiles: number[] }
   | { type: "void"; suit: number }
   | { type: "difficulty"; difficulty: AiDifficulty }
-  | { type: "discard"; tile: number }
+  | { type: "discard"; tile: number; fromDraw?: boolean }
+  | { type: "integrateDraw"; drawId: number }
   | { type: "act" | "claim"; action: Action };
 export type RoomView = {
   id: string;

@@ -21,12 +21,17 @@ import {
   snapshot,
   winScore,
   allowedDiscards,
+  hasSeparateDraw,
+  integrateDraw,
 } from "./engine/game";
 import { advise, chooseOwn, chooseResponse, knownCounts } from "./engine/ai";
 import { rules } from "./engine/rules";
 import { BONUS, defaultConfig } from "./engine/types";
 import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
 import { Tile } from "./Tile";
+import { HandRow } from "./HandRow";
+import { ActionHints, StrategyPanel } from "./AssistantPanels";
+import { buildAssistantReport } from "./engine/assistant";
 import { useTableFeedback } from "./feedback/useTableFeedback";
 import { eventLabel } from "./feedback/events";
 import { CenterFeedback } from "./feedback/CenterFeedback";
@@ -34,7 +39,7 @@ import { voiceId, voiceKind } from "./feedback/voice";
 import "./style.css";
 import { useRoom } from "./online/useRoom";
 import { RoomPanel } from "./online/RoomPanel";
-import type { RoomCommand } from "./online/protocol";
+import type { RoomCommand, RoomView } from "./online/protocol";
 const SAVE = "quiet-mahjong-v3";
 const PREF = "quiet-mahjong-preferences";
 function stored<T>(key: string, fallback: T): T {
@@ -79,6 +84,7 @@ function sound(kind: string, enabled: boolean) {
 }
 const amount = (n: number) => (n > 0 ? "+" + n : "" + n);
 const actionName = (type: string) => ({ pass: "过", win: "胡", chow: "吃", pung: "碰", kong: "杠", addedKong: "补杠", concealedKong: "暗杠" } as Record<string,string>)[type] ?? type;
+const difficultyName = (difficulty: AiDifficulty = "advanced") => ({ easy: "基础", normal: "标准", advanced: "进阶" })[difficulty];
 function Melds({ p, reveal = false }: { p: Player; reveal?: boolean }) {
   return (
     <div className="melds">
@@ -116,6 +122,11 @@ function Opponent({
   reveal = false,
   winningTile,
   activity,
+  difficulty,
+  onlineSeat,
+  separateDraw = false,
+  drawTile,
+  drawId,
 }: {
   p: Player;
   seat: number;
@@ -124,9 +135,18 @@ function Opponent({
   reveal?: boolean;
   winningTile?: number;
   activity?: string;
+  difficulty: AiDifficulty;
+  onlineSeat?: RoomView["seats"][number];
+  separateDraw?: boolean;
+  drawTile?: number | null;
+  drawId?: number;
 }) {
   // Only one copy of the winning tile is public before the round ends.
   const winningIndex = p.won ? p.hand.lastIndexOf(winningTile ?? -1) : -1;
+  const drawnIndex = separateDraw && !p.won ? reveal && drawTile != null ? p.hand.lastIndexOf(drawTile) : p.hand.length - 1 : -1;
+  const controller = onlineSeat?.human
+    ? onlineSeat.autoplay ? `电脑托管 · ${difficultyName(difficulty)}` : "在线玩家"
+    : `电脑 · ${difficultyName(difficulty)}`;
   return (
     <section
       className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""} ${activity ? "action-flash" : ""}`}
@@ -136,11 +156,9 @@ function Opponent({
         <div>
           <strong>{p.name}</strong>
           <span>
-            {p.won
-              ? "已胡牌"
-              : p.voidSuit >= 0
-                ? "缺" + ["万", "筒", "条"][p.voidSuit]
-                : "电脑 · 进阶"}
+            {controller}
+            {p.voidSuit >= 0 ? " · 缺" + ["万", "筒", "条"][p.voidSuit] : ""}
+            {p.won ? " · 已胡牌" : ""}
             {dealer ? " · 庄" : ""}
           </span>
         </div>
@@ -155,6 +173,7 @@ function Opponent({
       <span className="player-action" aria-hidden={!activity}>{activity ?? ""}</span>
       <div className="opponent-hand">
         {p.hand.map((t, k) => (
+          k === drawnIndex ? <span className="opponent-draw" key={`draw:${drawId ?? 0}`}><Tile tile={t} small hidden={!reveal} drawn /><small>摸</small></span> :
           <Tile key={k} tile={t} small hidden={!reveal && k !== winningIndex} />
         ))}
       </div>
@@ -435,7 +454,8 @@ function App() {
         ...stored<Partial<{ hints: boolean; sound: boolean; voice: boolean; voiceChoice: string; voiceRate: number; speed: number; assistantStyle: PlayStyle }>>(PREF, {}) },
     );
   const [paused, setPaused] = useState(false),
-    [tab, setTab] = useState<"advice" | "log" | "rules">("advice");
+    [tab, setTab] = useState<"advice" | "strategy" | "log" | "rules">("advice");
+  const [visualHandOrder, setVisualHandOrder] = useState<number[]>([]);
   const [replay, setReplay] = useState<Frame[] | null>(null),
     [replayIndex, setReplayIndex] = useState(0),
     [replayPlay, setReplayPlay] = useState(false),
@@ -551,6 +571,8 @@ function App() {
         : [],
     [game, ourTurn, prefs.hints, prefs.assistantStyle, replay, online.session, online.advice],
   );
+  const guidance = useMemo(() => prefs.hints && game && !replay ? online.session ? online.guidance : buildAssistantReport(game, 0, prefs.assistantStyle) : null,
+    [prefs.hints, game, replay, prefs.assistantStyle, online.session, online.guidance]);
   const waiting = useMemo(() => {
     if (
       !game ||
@@ -587,6 +609,12 @@ function App() {
   const humanWinningIndex = game?.players[0].hand.lastIndexOf(
     game.winners.find((w) => w.player === 0)?.tile ?? -1,
   ) ?? -1;
+  const handStream = `${online.session?.id ?? "solo"}:${game?.round ?? 0}:${game?.seed ?? 0}`;
+  const liveDrawIndex = game && hasSeparateDraw(game, 0) ? game.players[0].hand.lastIndexOf(game.drawnTile!) : -1;
+  const displayDraw = display && display.phase === "turn" && display.drawnTile != null && display.current === 0 &&
+    (display.drawState === undefined || !!display.drawState?.separated);
+  const humanDrawIndex = hideWonHand ? -1 : replay ? displayDraw ? display!.players[0].hand.lastIndexOf(display!.drawnTile!) : -1 : liveDrawIndex;
+  useEffect(() => { setSelected([]); }, [game?.players[0].hand.join(",")]);
   const start = (c: Config) => {
     if (createName !== null) {
       void online.enter(createName, c);
@@ -603,8 +631,8 @@ function App() {
     sound("start", prefs.sound);
   };
   const submitDiscard = () => {
-    if (game && ourTurn && selected.length === 1)
-      change((g) => discard(g, 0, g.players[0].hand[selected[0]]), "discard", { type: "discard", tile: game.players[0].hand[selected[0]] });
+    if (game && ourTurn && selected.length === 1 && allowedDiscards(game, 0).includes(game.players[0].hand[selected[0]]))
+      change((g) => discard(g, 0, g.players[0].hand[selected[0]], selected[0] === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[selected[0]], fromDraw: selected[0] === liveDrawIndex });
   };
   const pick = (k: number) => {
     if (!game || replay) return;
@@ -620,7 +648,7 @@ function App() {
     }
     if (ourTurn) {
       if (selected.length === 1 && selected[0] === k)
-        change((g) => discard(g, 0, g.players[0].hand[k]), "discard", { type: "discard", tile: game.players[0].hand[k] });
+        change((g) => discard(g, 0, g.players[0].hand[k], k === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[k], fromDraw: k === liveDrawIndex });
       else setSelected([k]);
     }
   };
@@ -636,7 +664,7 @@ function App() {
       if (e.code === "Space" && ourTurn) {
         e.preventDefault();
         submitDiscard();
-      } else if (/^[1-9]$/.test(e.key) && ourTurn) pick(+e.key - 1);
+      } else if (/^[1-9]$/.test(e.key) && ourTurn) pick(visualHandOrder[+e.key-1] ?? +e.key-1);
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -818,6 +846,11 @@ function App() {
                   <Opponent
                     p={display.players[2]}
                     seat={2}
+                    separateDraw={display.phase === "turn" && display.current === 2 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
+                    drawTile={display.drawnTile}
+                    drawId={display.drawState?.id}
+                    difficulty={game.config.aiDifficulty ?? "advanced"}
+                    onlineSeat={online.session ? online.room?.seats[2] : undefined}
                     activity={feedback.activity?.actor === 2 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 2)?.tile}
                     current={display.current === 2 && display.phase !== "end"}
@@ -827,6 +860,11 @@ function App() {
                   <Opponent
                     p={display.players[3]}
                     seat={3}
+                    separateDraw={display.phase === "turn" && display.current === 3 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
+                    drawTile={display.drawnTile}
+                    drawId={display.drawState?.id}
+                    difficulty={game.config.aiDifficulty ?? "advanced"}
+                    onlineSeat={online.session ? online.room?.seats[3] : undefined}
                     activity={feedback.activity?.actor === 3 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 3)?.tile}
                     current={display.current === 3 && display.phase !== "end"}
@@ -836,6 +874,11 @@ function App() {
                   <Opponent
                     p={display.players[1]}
                     seat={1}
+                    separateDraw={display.phase === "turn" && display.current === 1 && (display.drawState ? display.drawState.separated : game.drawState === undefined && game.drawnTile !== null)}
+                    drawTile={display.drawnTile}
+                    drawId={display.drawState?.id}
+                    difficulty={game.config.aiDifficulty ?? "advanced"}
+                    onlineSeat={online.session ? online.room?.seats[1] : undefined}
                     activity={feedback.activity?.actor === 1 ? eventLabel(feedback.activity) : undefined}
                     winningTile={game.winners.find((w) => w.player === 1)?.tile}
                     current={display.current === 1 && display.phase !== "end"}
@@ -902,33 +945,17 @@ function App() {
                         <span className="round-delta">本局 {amount(display.players[0].roundDelta)}</span>
                       </b>
                     </div>
+                    {prefs.hints && !replay && !hideWonHand && !["end","exchange","void"].includes(game.phase) && <div className="plan-preview">
+                      {guidance ? <button onClick={()=>setTab("strategy")}>{guidance.routes[0] ? `做牌主线：${guidance.routes[0].name} · 目标还需补${guidance.routes[0].missing}张 · 查看番型与缺牌 →` : "暂无常见做牌主线 · 查看当前等待与门槛 →"}</button> : <span>{online.adviceError ? "做牌建议暂不可用，请查看助手提示" : "正在更新做牌方向…"}</span>}
+                    </div>}
                     <Melds p={display.players[0]} reveal={!hideWonHand} />
-                    <div className="human-hand">
-                      {display.players[0].hand.map((t, k) => {
-                        const allowed =
-                          (game.phase === "exchange" && (!online.session || (!!online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy))) ||
-                          (ourTurn && allowedDiscards(game, 0).includes(t));
-                        return (
-                          <Tile
-                            key={k}
-                            tile={t}
-                            hidden={hideWonHand && k !== humanWinningIndex}
-                            selected={!replay && selected.includes(k)}
-                            suggested={!replay && analysis[0]?.tile === t}
-                            dim={!replay && ourTurn && !allowed}
-                            disabled={!allowed || !!replay}
-                            onClick={() => pick(k)}
-                            drawn={
-                              !replay &&
-                              game.drawnTile === t &&
-                              game.current === 0 &&
-                              game.phase === "turn" &&
-                              display.players[0].hand.lastIndexOf(t) === k
-                            }
-                          />
-                        );
-                      })}
-                    </div>
+                    <HandRow hand={display.players[0].hand} stream={replay ? `${handStream}:replay:${replayIndex}` : handStream}
+                      drawIndex={humanDrawIndex} drawId={display.drawState?.id ?? 0} selected={selected} suggested={analysis[0]?.tile}
+                      canPick={k => !replay && ((game.phase === "exchange" && (!online.session || (!!online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy))) || (ourTurn && allowedDiscards(game, 0).includes(display.players[0].hand[k])))}
+                      dim={k => !replay && !!ourTurn && !allowedDiscards(game, 0).includes(display.players[0].hand[k])}
+                      hidden={k => hideWonHand && k !== humanWinningIndex} onPick={pick} onSelect={k => setSelected([k])} onOrderChange={setVisualHandOrder}
+                      editable={!replay && !hideWonHand && ["turn", "claim", "rob"].includes(game.phase) && !online.busy}
+                      canIntegrate={!!ourTurn} replay={!!replay} onIntegrate={() => change(g => integrateDraw(g, 0, g.drawState?.id ?? 0), "integrate", {type: "integrateDraw", drawId: game.drawState?.id ?? 0})} />
                   </div>
                 </>
               ) : (
@@ -1072,6 +1099,7 @@ function App() {
                 )}
               </div>
             </div>
+            {guidance && prefs.hints && !replay && (claim.length > 0 || !!ourTurn && playerActions.length > 0) && <ActionHints report={guidance} config={game!.config} />}
             {replay && (
               <div className="replay-bar">
                 <button
@@ -1162,7 +1190,7 @@ function App() {
           </div>
           <aside>
             <div className="aside-tabs">
-              {(["advice", "log", "rules"] as const).map((t) => (
+              {(["advice", "strategy", "log", "rules"] as const).map((t) => (
                 <button
                   className={tab === t ? "active" : ""}
                   key={t}
@@ -1170,7 +1198,7 @@ function App() {
                 >
                   {t === "advice"
                     ? "打牌助手"
-                    : t === "log"
+                    : t === "strategy" ? "做牌方向" : t === "log"
                       ? "对局记录"
                       : "规则说明"}
                 </button>
@@ -1180,7 +1208,7 @@ function App() {
               <div className="advice-panel">
                 <span className="eyebrow">A LITTLE CLARITY</span>
                 <h3>{replay ? "先看选择，再看结果。" : "下一张，怎么打？"}</h3>
-                {online.session && prefs.hints && ourTurn && (online.adviceLoading || online.adviceError) &&
+                {online.session && prefs.hints && (online.adviceLoading || online.adviceError) &&
                   <p className="tiny" role="status">{online.adviceError || "后端正在重新计算当前风格的建议…"}</p>}
                 {!prefs.hints ? (
                   <p className="muted">
@@ -1294,7 +1322,7 @@ function App() {
                 <div className="storage-tools">
                   <button
                     disabled={!!online.session || !game}
-                    onClick={() => game && download(game, "一桌麻将-存档.json")}
+                    onClick={() => game && download(game, "mahjong-save.json")}
                   >
                     下载存档
                   </button>
@@ -1333,6 +1361,10 @@ function App() {
                   </label>
                 </div>
               </div>
+            ) : tab === "strategy" ? (
+              <div className="advice-panel strategy-tab">
+                {!prefs.hints ? <p>打开“提示”查看实时做牌方向。</p> : guidance ? <StrategyPanel report={guidance} config={game!.config} /> : <p>{online.adviceError || (game?.phase === "end" ? "本局已结束，可打开牌谱回放。" : "进入行牌阶段后展示做牌方向与实际听牌分数。")}</p>}
+              </div>
             ) : tab === "log" ? (
               <div className="log-panel">
                 <h3>这局发生了什么</h3>
@@ -1353,7 +1385,7 @@ function App() {
                           frames: game.frames,
                           payments: game.payments,
                         },
-                        "一桌麻将-牌谱.json",
+                        "mahjong-replay.json",
                       )
                     }
                   >
@@ -1383,7 +1415,7 @@ function App() {
         </div>
         <footer>
           <span>一桌麻将 · 认真打牌，慢慢来。</span>
-          <span>川麻 / 国标 · 进阶电脑 · 本地续局</span>
+          <span>川麻 / 国标 · {difficultyName(game?.config.aiDifficulty ?? config.aiDifficulty)}电脑 · {online.session ? "在线对局" : "本地续局"}</span>
         </footer>
       </main>
       {setup && (

@@ -31,7 +31,7 @@ export function useTableFeedback(game: Game | null, stream: string, replay: bool
     if (!fresh.length) return;
     setActivity(fresh.at(-1)!);
     fresh.forEach(e => {
-      sound(e.kind, soundEnabled);
+      if (e.kind !== "integrate") sound(e.kind, soundEnabled);
       if (voiceEnabled && unlocked.current && document.visibilityState !== "hidden") speaker.current!.announce(e);
     });
   }, [game, stream, replay, voiceEnabled, soundEnabled, sound]);
