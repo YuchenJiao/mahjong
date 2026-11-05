@@ -136,6 +136,7 @@ export function Tile({
   dim = false,
   disabled = false,
   onClick,
+  onDoubleClick,
   drawn = false,
   entering = false,
 }: {
@@ -147,6 +148,7 @@ export function Tile({
   dim?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  onDoubleClick?: () => void;
   drawn?: boolean;
   entering?: boolean;
 }) {
@@ -166,7 +168,7 @@ export function Tile({
       aria-label={label}
       aria-pressed={selected}
       disabled={disabled}
-      onClick={onClick}
+      onClick={onClick} onDoubleClick={onDoubleClick}
     >
       {face}
     </button>

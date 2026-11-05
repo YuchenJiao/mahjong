@@ -31,7 +31,7 @@ import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } fro
 import { Tile } from "./Tile";
 import { HandRow } from "./HandRow";
 import { ActionHints, StrategyPanel } from "./AssistantPanels";
-import { buildAssistantReport } from "./engine/assistant";
+import { actionGuidance, buildAssistantReport } from "./engine/assistant";
 import { useTableFeedback } from "./feedback/useTableFeedback";
 import { eventLabel } from "./feedback/events";
 import { CenterFeedback } from "./feedback/CenterFeedback";
@@ -603,6 +603,13 @@ function App() {
     online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
       ? game.pending.actions[0]
       : [];
+  const actionHints = useMemo(() => {
+    if (!prefs.hints || !game || replay || (!claim.length && !(ourTurn && playerActions.length))) return [];
+    if (guidance?.actions.length) return guidance.actions;
+    const legal = claim.length ? [...claim, { type: "pass" } as const] : playerActions;
+    const score = legal.some(a => a.type === "win") ? winScore(game, 0, !!ourTurn) : undefined;
+    return actionGuidance(publicView(game, 0), legal, prefs.assistantStyle, score);
+  }, [prefs.hints, game, replay, claim, ourTurn, playerActions, guidance, prefs.assistantStyle]);
   const display = game ? (replay ? replay[replayIndex] : snapshot(game)) : null;
   const hideWonHand = !!game && !replay && game.config.mode === "sichuan" &&
     game.phase !== "end" && game.players[0].won;
@@ -630,10 +637,13 @@ function App() {
     setNotice("");
     sound("start", prefs.sound);
   };
-  const submitDiscard = () => {
-    if (game && ourTurn && selected.length === 1 && allowedDiscards(game, 0).includes(game.players[0].hand[selected[0]]))
-      change((g) => discard(g, 0, g.players[0].hand[selected[0]], selected[0] === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[selected[0]], fromDraw: selected[0] === liveDrawIndex });
+  const discardAt = (k: number) => {
+    if (!game || !ourTurn || replay) return;
+    const tile = game.players[0].hand[k], fromDraw = k === liveDrawIndex;
+    if (allowedDiscards(game, 0).includes(tile))
+      change(g => discard(g, 0, tile, fromDraw), "discard", { type: "discard", tile, fromDraw });
   };
+  const submitDiscard = () => { if (selected.length === 1) discardAt(selected[0]); };
   const pick = (k: number) => {
     if (!game || replay) return;
     if (game.phase === "exchange") {
@@ -648,7 +658,7 @@ function App() {
     }
     if (ourTurn) {
       if (selected.length === 1 && selected[0] === k)
-        change((g) => discard(g, 0, g.players[0].hand[k], k === liveDrawIndex), "discard", { type: "discard", tile: game.players[0].hand[k], fromDraw: k === liveDrawIndex });
+        discardAt(k);
       else setSelected([k]);
     }
   };
@@ -953,7 +963,7 @@ function App() {
                       drawIndex={humanDrawIndex} drawId={display.drawState?.id ?? 0} selected={selected} suggested={analysis[0]?.tile}
                       canPick={k => !replay && ((game.phase === "exchange" && (!online.session || (!!online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy))) || (ourTurn && allowedDiscards(game, 0).includes(display.players[0].hand[k])))}
                       dim={k => !replay && !!ourTurn && !allowedDiscards(game, 0).includes(display.players[0].hand[k])}
-                      hidden={k => hideWonHand && k !== humanWinningIndex} onPick={pick} onSelect={k => setSelected([k])} onOrderChange={setVisualHandOrder}
+                      hidden={k => hideWonHand && k !== humanWinningIndex} onPick={pick} onDiscard={discardAt} onSelect={k => setSelected([k])} onOrderChange={setVisualHandOrder}
                       editable={!replay && !hideWonHand && ["turn", "claim", "rob"].includes(game.phase) && !online.busy}
                       canIntegrate={!!ourTurn} replay={!!replay} onIntegrate={() => change(g => integrateDraw(g, 0, g.drawState?.id ?? 0), "integrate", {type: "integrateDraw", drawId: game.drawState?.id ?? 0})} />
                   </div>
@@ -970,6 +980,7 @@ function App() {
                 <span className={`status-dot ${ourTurn ? "you" : ""}`} />
                 <strong>{paused && !replay ? "对局已暂停" : status}</strong>
                 <span className="muted">{online.error || notice || saveWarning}</span>
+                {game && <ActionHints actions={actionHints} config={game.config} />}
               </div>
               <div className="actions">
                 {game && !replay && game.phase === "exchange" && (!online.session || (online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy)) && (
@@ -1099,7 +1110,6 @@ function App() {
                 )}
               </div>
             </div>
-            {guidance && prefs.hints && !replay && (claim.length > 0 || !!ourTurn && playerActions.length > 0) && <ActionHints report={guidance} config={game!.config} />}
             {replay && (
               <div className="replay-bar">
                 <button

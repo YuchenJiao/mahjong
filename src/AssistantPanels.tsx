@@ -1,20 +1,22 @@
-import type { AssistantReport } from "./engine/assistant";
+import type { ActionAdvice, AssistantReport } from "./engine/assistant";
 import type { Config, WinScore } from "./engine/types";
 import { tileName } from "./engine/core";
 import { Tile } from "./Tile";
 
 const scoreText = (score: WinScore, config: Config) => config.scoring ? `${score.fan}${config.mode === "mcr" ? "分" : "番"}` : `${score.points}固定分`;
-export function ActionHints({ report, config }: { report: AssistantReport; config: Config }) {
-  if (!report.actions.length) return null;
-  return <section className="action-hints" aria-label="吃碰杠胡建议">
-    <h3>操作建议 <small>建议不会自动执行</small></h3>
-    <div className="action-hint-list">{report.actions.map((hint,i)=><article key={i} className={hint.recommended?"recommended-action":""}>
+export function ActionHints({ actions, config }: { actions: ActionAdvice[]; config: Config }) {
+  const best = actions.find(hint => hint.recommended);
+  if (!best) return null;
+  const target = best.action.tiles?.map(tileName).join("、") ?? (best.action.tile === undefined ? "" : tileName(best.action.tile));
+  return <details className="action-hints" aria-label="吃碰杠胡建议">
+    <summary><strong>建议：{best.label}{target && " " + target}</strong> · {best.reasons[0]} <small>展开比较</small></summary>
+    <div className="action-hint-list">{actions.map((hint,i)=><article key={i} className={hint.recommended?"recommended-action":""}>
       <strong>{hint.recommended?"建议：":""}{hint.label}{hint.action.tiles?` ${hint.action.tiles.map(tileName).join("、")}`:""}
         {hint.score?` · ${scoreText(hint.score,config)}`:""}</strong>
       {hint.reasons.map((reason,k)=><p key={k}>{reason}</p>)}
       {hint.score&&<div className="fan-chips">{hint.score.items.map((fan,k)=><span key={k}>{fan.name} {fan.value*fan.count}{config.mode==="mcr"?"分":"番"}</span>)}</div>}
     </article>)}</div>
-  </section>;
+  </details>;
 }
 export function StrategyPanel({ report, config }: { report: AssistantReport; config: Config }) {
   return <section className="strategy-panel" aria-label="实时做牌方向">
