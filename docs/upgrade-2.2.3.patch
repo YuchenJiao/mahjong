@@ -1,0 +1,292 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# 一桌麻将 · 在线版 2.2.2
++# 一桌麻将 · 在线版 2.2.3
+ 
+ React + TypeScript + Vite前端，Node.js 24后端。支持1–4位真人在线，空座由可选难度的电脑补齐；保留浏览器本地单人模式。无需账号、付费API或大模型密钥。
+ 
+@@ -25,6 +25,15 @@
+ 6. 结束后可复盘四家完整手牌；房主继续下一局，累计座位分数。
+ 
+ 房间只在开局前或本局结束后接受新玩家；房主离开后转交仍在房间的玩家。牌局中的离开座位由电脑接手。邀请链接只包含房间号，不含座位凭据；清除浏览器存储会失去原座位的重连凭据。
++
++## 2.2.3修复电脑难度标签
++
++- 此前玩家卡片和页脚写死了“进阶”，现在统一读取当前牌局的电脑难度，显示基础／标准／进阶。
++- 局中调整难度，三个电脑标签和页脚即时同步；定缺、胡牌和庄家状态作为额外信息保留。
++- 联机真人显示“在线玩家”；由电脑托管的真人显示“电脑托管”及当前难度。
++- 电脑出牌原本已读取所选档位，本次未改变算法。助手继续独立使用进阶分析，电脑难度不会降低助手的分析档位。
++
++已有2.2.2仓库见[2.2.3升级说明](docs/UPGRADE_2.2.3.md)。仅界面显示有调整，存档及房间数据不需要迁移或清空。
+ 
+ ## 2.2.2修复国标存档刷新崩溃
+ 
+diff --git a/docs/UPGRADE_2.2.3.md b/docs/UPGRADE_2.2.3.md
+new file mode 100644
+--- /dev/null
++++ b/docs/UPGRADE_2.2.3.md
+@@ -0,0 +1,22 @@
++# 从2.2.2升级到2.2.3
++
++修复开局选“基础”，电脑玩家卡片仍显示“进阶”的问题。此前玩家副标题与页脚是固定文字；实际出牌算法通过`publicView.config.aiDifficulty`读取设置，本次没有修改算法。
++
++现在三个电脑标签和页脚读取当前牌局的难度，局中切换也会同步。定缺、胡牌和庄家状态继续显示；联机真人与电脑托管分别标注。个人助手仍使用进阶分析，与电脑档位独立。
++
++将完整包`quiet-mahjong/`合并到现有仓库，保留`.git`、`.env`、`.data`和部署设置。也可以在原始2.2.2仓库应用包内补丁：
++
++```bash
++git apply --check docs/upgrade-2.2.3.patch
++git apply docs/upgrade-2.2.3.patch
++npm ci
++npm test
++npm run build
++git add .
++git commit -m "Show the configured Mahjong computer difficulty"
++git push
++```
++
++完整合并源码和应用补丁二选一；已有自定义改动导致检查失败时请按差异合并。Render单服务重新部署整个仓库；前后端分开部署时只更新前端即可，后端API行为未变。存档、房间和数据库无需迁移或清空。
++
++新增验证运行在真实前端入口的jsdom DOM环境，覆盖难度标签切换与实际电脑弃牌；不等同于Chrome／Safari实机视觉验证。本次未登录或修改你自行部署的GitHub／Render账户，重新部署后生效。
+diff --git a/docs/VALIDATION.md b/docs/VALIDATION.md
+--- a/docs/VALIDATION.md
++++ b/docs/VALIDATION.md
+@@ -1,11 +1,13 @@
+-# 交付验证记录 · 2.2.2
++# 交付验证记录 · 2.2.3
+ 
+-日期：2026-10-16。
++日期：2026-10-19。
+ 
+ | 检查 | 结果 |
+ |---|---|
+ | TypeScript前后端检查、Vite生产构建 | 通过 |
+-| 全部自动测试 | 61项通过，0失败 |
++| 全部自动测试 | 62项通过，0失败 |
++| 难度标签同步 | 真实前端入口在基础档开局状态显示三个“电脑 · 基础”；切换标准／进阶／基础后，标签、页脚及保存的设置同步 |
++| 实际电脑难度 | 真实前端执行电脑出牌，基础／标准／进阶各验证一次首张弃牌，结果与同一档位的规则算法结果一致 |
+ | 冷启动前端入口 | 同一DOM回归在旧2.2.1入口复现undefined.ccall；新版实际入口在WASM延迟、助手开／关两种情况下均先显示加载，再恢复国标14张手牌 |
+ | 严格模式与初始化 | React StrictMode延迟恢复、并发初始化共用一次尝试、失败后可重试、卸载后迟到结果忽略均通过 |
+ | 初始化异常与存档 | 失败页不挂载牌桌，点击重试后恢复；加载前及失败期间存档不变，无删除或清空操作 |
+@@ -30,7 +32,7 @@
+ | 音色偏好 | 手动选定音色、声音缺失回退、语速范围与原生音高通过模拟接口验证 |
+ | 语音控制器 | 模拟浏览器声音接口验证中文牌名、中文声音选择、多响顺序、短队列、静音清理、异常降级 |
+ | 播报去重 | 首次连接不读历史，重复与迟到轮询不重复读，房间切换、回放不补播 |
+-| 实际Node HTTP | 本版健康2.2.2、首次冷启动规则请求及生产HTML通过；公开出牌事件、来客座位旋转、对手手牌隐藏已在2.2真实HTTP验证并由本版完整回归覆盖；既有难度与助手行为另由完整回归覆盖 |
++| 实际Node HTTP | 本版健康2.2.3、首次冷启动规则请求及生产HTML通过；公开出牌事件、来客座位旋转、对手手牌隐藏已在2.2真实HTTP验证并由本版完整回归覆盖；既有难度与助手行为另由完整回归覆盖 |
+ 
+ ## 边界
+ 
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "quiet-mahjong",
+-  "version": "2.2.2",
++  "version": "2.2.3",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quiet-mahjong",
+-      "version": "2.2.2",
++      "version": "2.2.3",
+       "dependencies": {
+         "react": "^19.2.0",
+         "react-dom": "^19.2.0",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "quiet-mahjong",
+   "private": true,
+-  "version": "2.2.2",
++  "version": "2.2.3",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+diff --git a/server/api.ts b/server/api.ts
+--- a/server/api.ts
++++ b/server/api.ts
+@@ -39,7 +39,7 @@
+     return json({
+       status: "ok",
+       service: "quiet-mahjong",
+-      version: "2.2.2",
++      version: "2.2.3",
+       storage: capabilities.onlineRooms ? "persistent-room-store" : "browser-local",
+       persistentServerState: !!capabilities.onlineRooms,
+       onlineRooms: !!capabilities.onlineRooms,
+diff --git a/src/main.tsx b/src/main.tsx
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -34,7 +34,7 @@
+ import "./style.css";
+ import { useRoom } from "./online/useRoom";
+ import { RoomPanel } from "./online/RoomPanel";
+-import type { RoomCommand } from "./online/protocol";
++import type { RoomCommand, RoomView } from "./online/protocol";
+ const SAVE = "quiet-mahjong-v3";
+ const PREF = "quiet-mahjong-preferences";
+ function stored<T>(key: string, fallback: T): T {
+@@ -79,6 +79,7 @@
+ }
+ const amount = (n: number) => (n > 0 ? "+" + n : "" + n);
+ const actionName = (type: string) => ({ pass: "过", win: "胡", chow: "吃", pung: "碰", kong: "杠", addedKong: "补杠", concealedKong: "暗杠" } as Record<string,string>)[type] ?? type;
++const difficultyName = (difficulty: AiDifficulty = "advanced") => ({ easy: "基础", normal: "标准", advanced: "进阶" })[difficulty];
+ function Melds({ p, reveal = false }: { p: Player; reveal?: boolean }) {
+   return (
+     <div className="melds">
+@@ -116,6 +117,8 @@
+   reveal = false,
+   winningTile,
+   activity,
++  difficulty,
++  onlineSeat,
+ }: {
+   p: Player;
+   seat: number;
+@@ -124,9 +127,14 @@
+   reveal?: boolean;
+   winningTile?: number;
+   activity?: string;
++  difficulty: AiDifficulty;
++  onlineSeat?: RoomView["seats"][number];
+ }) {
+   // Only one copy of the winning tile is public before the round ends.
+   const winningIndex = p.won ? p.hand.lastIndexOf(winningTile ?? -1) : -1;
++  const controller = onlineSeat?.human
++    ? onlineSeat.autoplay ? `电脑托管 · ${difficultyName(difficulty)}` : "在线玩家"
++    : `电脑 · ${difficultyName(difficulty)}`;
+   return (
+     <section
+       className={`opponent seat-${seat} ${current ? "current" : ""} ${p.won ? "won" : ""} ${activity ? "action-flash" : ""}`}
+@@ -136,11 +144,9 @@
+         <div>
+           <strong>{p.name}</strong>
+           <span>
+-            {p.won
+-              ? "已胡牌"
+-              : p.voidSuit >= 0
+-                ? "缺" + ["万", "筒", "条"][p.voidSuit]
+-                : "电脑 · 进阶"}
++            {controller}
++            {p.voidSuit >= 0 ? " · 缺" + ["万", "筒", "条"][p.voidSuit] : ""}
++            {p.won ? " · 已胡牌" : ""}
+             {dealer ? " · 庄" : ""}
+           </span>
+         </div>
+@@ -818,6 +824,8 @@
+                   <Opponent
+                     p={display.players[2]}
+                     seat={2}
++                    difficulty={game.config.aiDifficulty ?? "advanced"}
++                    onlineSeat={online.session ? online.room?.seats[2] : undefined}
+                     activity={feedback.activity?.actor === 2 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 2)?.tile}
+                     current={display.current === 2 && display.phase !== "end"}
+@@ -827,6 +835,8 @@
+                   <Opponent
+                     p={display.players[3]}
+                     seat={3}
++                    difficulty={game.config.aiDifficulty ?? "advanced"}
++                    onlineSeat={online.session ? online.room?.seats[3] : undefined}
+                     activity={feedback.activity?.actor === 3 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 3)?.tile}
+                     current={display.current === 3 && display.phase !== "end"}
+@@ -836,6 +846,8 @@
+                   <Opponent
+                     p={display.players[1]}
+                     seat={1}
++                    difficulty={game.config.aiDifficulty ?? "advanced"}
++                    onlineSeat={online.session ? online.room?.seats[1] : undefined}
+                     activity={feedback.activity?.actor === 1 ? eventLabel(feedback.activity) : undefined}
+                     winningTile={game.winners.find((w) => w.player === 1)?.tile}
+                     current={display.current === 1 && display.phase !== "end"}
+@@ -1383,7 +1395,7 @@
+         </div>
+         <footer>
+           <span>一桌麻将 · 认真打牌，慢慢来。</span>
+-          <span>川麻 / 国标 · 进阶电脑 · 本地续局</span>
++          <span>川麻 / 国标 · {difficultyName(game?.config.aiDifficulty ?? config.aiDifficulty)}电脑 · {online.session ? "在线对局" : "本地续局"}</span>
+         </footer>
+       </main>
+       {setup && (
+diff --git a/tests/client-startup.test.ts b/tests/client-startup.test.ts
+--- a/tests/client-startup.test.ts
++++ b/tests/client-startup.test.ts
+@@ -2,8 +2,10 @@
+ import assert from "node:assert/strict";
+ import { build } from "esbuild";
+ import { JSDOM, VirtualConsole } from "jsdom";
+-import { newGame } from "../src/engine/game";
++import { newGame, publicView, ownActions } from "../src/engine/game";
+ import { defaultConfig } from "../src/engine/types";
++import { initCore } from "../src/engine/core";
++import { advise, chooseOwn } from "../src/engine/ai";
+ 
+ let entry: string;
+ before(async () => {
+@@ -28,7 +30,7 @@
+   // jsdom omits this browser API; use Node's equivalent for the assistant.
+   Object.defineProperty(win, "structuredClone", { configurable: true, value: structuredClone });
+   win.addEventListener("error", event => { errors.push(event.error ?? event.message); event.preventDefault(); });
+-  const saved = JSON.stringify(newGame({ ...defaultConfig, mode: "mcr" }, undefined, 64));
++  const saved = JSON.stringify(newGame({ ...defaultConfig, mode: "mcr", aiDifficulty: "easy" }, undefined, 64));
+   win.localStorage.setItem("quiet-mahjong-v3", saved);
+   win.localStorage.setItem("quiet-mahjong-preferences", JSON.stringify({ hints, sound: false, voice: false }));
+   const wasm = (win as unknown as { WebAssembly: typeof WebAssembly }).WebAssembly;
+@@ -54,5 +56,49 @@
+     assert.ok(win.document.querySelector(".game-heading h2")!.textContent!.includes("国标麻将"));
+     assert.equal(win.document.querySelector('[role="alert"]'), null);
+     assert.equal(JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!).round, 1);
++    const subtitles = () => [...win.document.querySelectorAll(".opponent .player-meta > div > span")].map(el => el.textContent ?? "");
++    assert.equal(subtitles().length, 3);
++    assert.ok(subtitles().every(text => text.includes("电脑 · 基础")));
++    for (const [difficulty, label] of [["normal", "标准"], ["advanced", "进阶"], ["easy", "基础"]]) {
++      const select = win.document.querySelector<HTMLSelectElement>('[aria-label="电脑智能程度"]')!;
++      select.value = difficulty;
++      select.dispatchEvent(new win.Event("change", { bubbles: true }));
++      await until(() => subtitles().every(text => text.includes(`电脑 · ${label}`)) && JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!).config.aiDifficulty === difficulty, "difficulty labels and saved setting update together");
++      assert.ok(win.document.querySelector("footer")!.textContent!.includes(`${label}电脑`));
++    }
+   } finally { release(); dom.window.close(); }
+ });
++
++test("Real local CPU uses the configured difficulty for its discard", async () => {
++  await initCore();
++  const decisions: number[] = [];
++  for (const difficulty of ["easy", "normal", "advanced"] as const) {
++    // This hand produces different easy/advanced choices, so always using the
++    // advanced policy cannot accidentally pass the propagation regression.
++    const game = newGame({ ...defaultConfig, mode: "mcr", scoring: false, aiDifficulty: difficulty }, undefined, 4);
++    [game.players[0].hand, game.players[1].hand] = [game.players[1].hand, game.players[0].hand];
++    game.current = 1;
++    const view = publicView(game, 1);
++    assert.equal(view.config.aiDifficulty, difficulty);
++    assert.equal(chooseOwn(view, ownActions(game, 1)), null);
++    const expected = advise(view, { difficulty })[0].tile;
++    const errors: unknown[] = [], logs = new VirtualConsole();
++    logs.on("jsdomError", error => errors.push(error));
++    const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "https://mahjong.test/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: logs });
++    const win = dom.window;
++    Object.defineProperty(win, "structuredClone", { configurable: true, value: structuredClone });
++    win.addEventListener("error", e => { errors.push(e.error ?? e.message); e.preventDefault(); });
++    win.localStorage.setItem("quiet-mahjong-v3", JSON.stringify(game));
++    win.localStorage.setItem("quiet-mahjong-preferences", JSON.stringify({ hints: false, sound: false, voice: false, speed: 30 }));
++    try {
++      win.eval(entry);
++      const firstDiscard = () => JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!).events.find((e: { actor: number; kind: string }) => e.actor === 1 && e.kind === "discard");
++      await until(() => !!firstDiscard() || errors.length > 0, `CPU discard at ${difficulty} difficulty`);
++      assert.deepEqual(errors, []);
++      assert.equal(firstDiscard().tile, expected);
++      decisions.push(firstDiscard().tile);
++      assert.equal(JSON.parse(win.localStorage.getItem("quiet-mahjong-v3")!).config.aiDifficulty, difficulty);
++    } finally { dom.window.close(); }
++  }
++  assert.ok(new Set(decisions).size > 1);
++});

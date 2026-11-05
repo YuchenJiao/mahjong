@@ -36,7 +36,7 @@ export function CenterFeedback({ mode, activity, actorName, tile, caption, event
   return <div className="center-marker notranslate" translate="no">
     <span className="mode-seal">{mode === "sichuan" ? "川" : "国"}</span>
     <div className="event-slot">
-      <div ref={bubble} className={`event-bubble ${activity ? "is-visible" : ""} ${activity?.kind === "win" ? "event-win" : ""}`} aria-hidden={!activity}>
+      <div ref={bubble} data-kind={activity?.kind} className={`event-bubble ${activity ? "is-visible" : ""} ${activity?.kind === "win" ? "event-win" : ""}`} aria-hidden={!activity}>
         <small>{activity ? actorName : ""}</small>
         <strong>{activity ? eventLabel(activity) : ""}</strong>
       </div>

@@ -118,14 +118,19 @@ export type Frame = {
   wind: number;
   lastTile?: Tile;
   lastFrom?: number;
+  drawState?: DrawState | null;
+  drawnTile?: Tile | null;
+  layoutOnly?: boolean;
 };
+export type DrawState = { actor: number; id: number; separated: boolean };
 // Confirmed, public actions only. Concealed kongs never carry a tile.
 export type TableEvent = {
   id: number;
   actor: number;
-  kind: "discard" | "chow" | "pung" | "kong" | "win";
+  kind: "discard" | "chow" | "pung" | "kong" | "win" | "draw" | "integrate";
   tile?: Tile;
   self?: boolean;
+  fromDraw?: boolean;
 };
 export type Game = {
   version: 3;
@@ -139,6 +144,7 @@ export type Game = {
   wind: number;
   exchangeDir: number;
   drawnTile: Tile | null;
+  drawState?: DrawState | null;
   kongDraw: boolean;
   discardCount: number;
   callCount: number;

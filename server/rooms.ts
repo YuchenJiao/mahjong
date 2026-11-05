@@ -1,7 +1,8 @@
 import { initCore, suit } from "../src/engine/core";
+import { buildAssistantReport } from "../src/engine/assistant";
 import { advise, chooseOwn, chooseResponse } from "../src/engine/ai";
 import { newGame, exchangeAll, voidAll, chooseExchange, chooseVoid, publicView,
-  ownActions, act, discard, respond, advance, historicalDiscards } from "../src/engine/game";
+  ownActions, act, discard, respond, advance, historicalDiscards, integrateDraw } from "../src/engine/game";
 import type { Game, Config, Frame, Meld } from "../src/engine/types";
 import type { RoomCommand, RoomView } from "../src/online/protocol";
 import { configInput, object, InputError, difficultyInput, styleInput } from "./validation";
@@ -30,7 +31,7 @@ function name(x: unknown) {
   if (typeof x !== "string" || !x.trim() || x.trim().length > 12 || /[\p{C}]/u.test(x)) throw new RoomError("昵称须为1–12个字符");
   return x.trim();
 }
-export function stageKey(g: Game | null) { return g ? `${g.round}:${g.phase}:${g.current}:${g.frames.length}` : "lobby"; }
+export function stageKey(g: Game | null) { return g ? `${g.round}:${g.phase}:${g.current}:${g.frames.length-g.frames.filter(f=>f.layoutOnly).length}` : "lobby"; }
 function clock(r: RoomRecord, now: number) {
   const stage = stageKey(r.game);
   if (r.stage !== stage) {
@@ -115,7 +116,13 @@ function command(r: RoomRecord, seat: number, c: RoomCommand, now: number) {
   } else if (c.type === "void") {
     if (g.phase !== "void" || r.voids[seat] !== null || ![0, 1, 2].includes(c.suit)) throw new RoomError("当前不能定缺");
     r.voids[seat] = c.suit;
-  } else if (c.type === "discard") discard(g, seat, c.tile);
+  } else if (c.type === "integrateDraw") {
+    if (!Number.isInteger(c.drawId)) throw new RoomError("摸牌编号无效");
+    integrateDraw(g, seat, c.drawId); return; // Moving a tile does not renew the turn clock.
+  } else if (c.type === "discard") {
+    if (c.fromDraw !== undefined && typeof c.fromDraw !== "boolean") throw new RoomError("出牌方式无效");
+    discard(g, seat, c.tile, c.fromDraw);
+  }
   else if (c.type === "act") act(g, seat, c.action);
   else if (c.type === "claim") { respond(g, seat, c.action); advance(g); }
   else throw new RoomError("未知操作");
@@ -124,7 +131,7 @@ function command(r: RoomRecord, seat: number, c: RoomCommand, now: number) {
 export function roomView(r: RoomRecord, self: number, now: number): RoomView {
   const order = [0, 1, 2, 3].map(i => (i + self) % 4), at = (i: number) => (i - self + 4) % 4;
   const rotateMeld = (m: Meld) => ({ ...m, from: at(m.from) });
-  const rotateFrame = (f: Frame): Frame => ({ ...f, players: order.map(i => ({ ...clone(f.players[i]), melds: f.players[i].melds.map(rotateMeld) })), current: at(f.current), dealer: at(f.dealer), lastFrom: f.lastFrom === undefined ? undefined : at(f.lastFrom) });
+  const rotateFrame = (f: Frame): Frame => ({ ...f, players: order.map(i => ({ ...clone(f.players[i]), melds: f.players[i].melds.map(rotateMeld) })), current: at(f.current), dealer: at(f.dealer), lastFrom: f.lastFrom === undefined ? undefined : at(f.lastFrom), drawState: f.drawState ? { ...f.drawState, actor: at(f.drawState.actor) } : f.drawState });
   const g = r.game;
   let safe: Game | null = null;
   if (g) {
@@ -132,6 +139,7 @@ export function roomView(r: RoomRecord, self: number, now: number): RoomView {
     safe = {
       ...clone(g), seed: 0, wall: Array(g.wall.length).fill(-1),
       current: at(g.current), dealer: at(g.dealer),
+      drawState: g.drawState ? { ...g.drawState, actor: at(g.drawState.actor) } : g.drawState === undefined && g.phase === "turn" && g.drawnTile !== null ? { actor: at(g.current), id: 0, separated: true } : null,
       events: (g.events ?? []).map(e => ({ ...e, actor: at(e.actor) })),
       drawnTile: g.current === self || reveal ? g.drawnTile : null,
       players: order.map(i => {
@@ -196,7 +204,7 @@ export function createRoomsApi(store: RoomStore, now = () => Date.now()) {
           if (seat < 0 || bearer.length !== 48) throw new RoomError("无法验证座位", 401);
           const style = styleInput(data.style), g = r.game;
           if (data.stage !== undefined && data.stage !== r.stage) throw new RoomError("建议对应的牌局已变化", 409);
-          return json({ stage: r.stage, style, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
+          return json({ stage: r.stage, style, guidance: g ? buildAssistantReport(g, seat, style) : null, analysis: g?.phase === "turn" && g.current === seat && !g.players[seat].won
             ? advise(publicView(g, seat), { style, difficulty: "advanced" }) : [] });
         }
         if (route === "join") {

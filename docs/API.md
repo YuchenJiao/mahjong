@@ -118,3 +118,11 @@ RoomView.game.pending.responses[0]现在保留自己的真实选择；其他座�
 `RoomView.game.events`是本局已确认的公开动作，按时间递增。元素为`{id, actor, kind, tile?, self?}`；`kind`包含`discard/chow/pung/kong/win`。`actor`和其他座位字段一样，已旋转为当前接收者视角（自己为0）。暗杠事件没有`tile`；摸牌不产生公开牌面事件。吃碰杠胡只有规则仲裁后实际成立才写入，抢杠取消的补杠及被胡牌优先取消的碰牌不写入。
 
 前端首次接入、刷新或换房间时从当前事件尾部开始，后续仅消费新的事件ID。`events`在旧存档中可缺省，首次新动作自动创建；不需要数据库表结构迁移。回放使用既有Frame，不触发实时语音。
+
+## 2.3 摸牌来源与实时指导
+
+房间`game.drawState`为`{actor,id,separated}`或null。actor按接收者视角旋转，id对应本次摸牌事件；初始庄家为0。其他玩家的`drawnTile`仍为null，暗牌仍为-1。`draw`与`integrate`公开事件不含tile，`discard`增加可选布尔`fromDraw`：true为右侧新摸牌直接打出，false为手牌打出。历史事件缺少字段时按普通出牌展示。
+
+新命令：`{type:"integrateDraw",drawId:number}`，只允许当前摸牌者执行，服务端校验本次摸牌编号；归入不续期倒计时或变更行动阶段。归入产生`layoutOnly:true`回放帧，阶段号的计数排除这类帧。重复请求仍复用requestId幂等。`discard`命令可带`fromDraw`；不传则兼容旧客户端，按实际牌面与独立槽状态推断。带来源的错误请求会拒绝。
+
+`POST /api/rooms/:id/analyze`保留`stage`、`style`、`analysis`返回值，新增`guidance`。在本人非出牌回合也可返回做牌报告，`analysis`仍仅本人出牌回合有弃牌候选。`guidance`包含shanten、basisDiscard、waits、routes、actions、eightPointMinimum、notes；每条路线含完整示例example、缺牌needed、保留keep、点和ron与自摸self的WinScore。操作建议只取本人当前合法动作，不泄露他家候选。请求不改变牌局、倒计时、托管状态或个人／房间风格设置。前端丢弃过期stage或风格不符的响应。

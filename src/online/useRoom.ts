@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Config, PlayStyle } from "../engine/types";
 import type { RoomCommand, RoomSession, RoomView } from "./protocol";
 import type { Advice } from "../engine/ai";
+import type { AssistantReport } from "../engine/assistant";
 import { RoomUpdates } from "./updates";
 const KEY = "quiet-mahjong-online-session";
 const base = (import.meta.env.VITE_ONLINE_API_URL ?? "").replace(/\/$/, "");
@@ -15,7 +16,7 @@ export function useRoom() {
   const [networkError, setNetworkError] = useState("");
   const [pending, setPending] = useState<RoomCommand | null>(null);
   const [adviceStyle, setAdviceStyle] = useState<PlayStyle>("balanced");
-  const [advice, setAdvice] = useState<{stage: string; style: PlayStyle; items: Advice[]}>({stage: "",style: "balanced",items: []});
+  const [advice, setAdvice] = useState<{stage: string; style: PlayStyle; items: Advice[]; guidance: AssistantReport | null}>({stage: "",style: "balanced",items: [], guidance: null});
   const [adviceLoading, setAdviceLoading] = useState(false), [adviceError, setAdviceError] = useState("");
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -35,7 +36,7 @@ export function useRoom() {
         body: data === undefined ? undefined : JSON.stringify(data), signal: controller.signal });
       const body = await r.json();
       if (!r.ok) throw new Error(body.error ?? "联机服务未就绪");
-      return body as { room: RoomView; token?: string; stage?: string; analysis?: Advice[] };
+      return body as { room: RoomView; token?: string; stage?: string; analysis?: Advice[]; guidance?: AssistantReport | null };
     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
   }
   function remember(s: RoomSession | null) {
@@ -95,18 +96,19 @@ export function useRoom() {
     return () => { stopped = true; clearTimeout(timer); activePoll.current?.abort(); };
   }, [session?.id, session?.token]);
   useEffect(() => {
-    if (!session || !room?.game || room.game.phase !== "turn" || room.game.current !== 0 || room.game.players[0].won) {
+    if (!session || !room?.game || ["exchange", "void", "end"].includes(room.game.phase) || room.game.players[0].won) {
       setAdviceLoading(false); return;
     }
     let cancelled = false; const controller = new AbortController(), stage = room.stage;
     setAdviceLoading(true); setAdviceError("");
     void request(`/api/rooms/${session.id}/analyze`, session, { style: adviceStyle, stage }, controller.signal)
-      .then(r => { if (!cancelled && r.stage === stage) setAdvice({stage,style:adviceStyle,items:r.analysis ?? []}); })
+      .then(r => { if (!cancelled && r.stage === stage) setAdvice({stage,style:adviceStyle,items:r.analysis ?? [], guidance:r.guidance ?? null}); })
       .catch(e => { if (!cancelled) setAdviceError(e instanceof Error ? e.message : "建议计算失败"); })
       .finally(() => { if (!cancelled) setAdviceLoading(false); });
     return () => { cancelled = true; controller.abort(); };
   }, [session?.token, room?.stage, adviceStyle]);
   function forget() { remember(null); setRoom(null); setConnected(false); setError(""); }
   return { session, room, error: error || networkError, busy, pending, connected, enter, send, forget, setAdviceStyle, adviceLoading, adviceError,
+    guidance: advice.stage === room?.stage && advice.style === adviceStyle ? advice.guidance : null,
     advice: advice.stage === room?.stage && advice.style === adviceStyle ? advice.items : [] };
 }
