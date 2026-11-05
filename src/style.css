@@ -1736,6 +1736,9 @@ input {
 .event-bubble[data-kind="integrate"] strong { font-size: 18px; }
 @keyframes draw-arrival { 0% { opacity: .15; transform: translate(26px,-24px) rotate(8deg) scale(.82); } 65% { opacity: 1; transform: translate(0,-5px) rotate(0) scale(1.06); } 100% { opacity: 1; transform: translate(0,0) rotate(0) scale(1); } }
 .action-hints { margin-top: 14px; background: #fffdf6; border: 1px solid #d1dbc7; border-radius: 14px; padding: 18px; min-width: 0; }
+.turn-status .action-hints { flex: 0 0 100%; margin: 0; padding: 8px 10px; box-sizing: border-box; font-size: 13px; }
+.turn-status .action-hints summary { cursor: pointer; color: #274b37; line-height: 1.5; }
+.turn-status .action-hints .action-hint-list { margin-top: 8px; }
 .action-hints h3 { font-size: 18px; margin: 0 0 12px; }
 .action-hints h3 small { font-size: 12px; color: #617369; font-weight: 400; margin-left: 8px; }
 .action-hint-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 10px; }

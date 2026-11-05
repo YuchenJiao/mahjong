@@ -15,17 +15,21 @@ function savedOrder(stream: string): number[] {
   try { const v = JSON.parse(localStorage.getItem(KEY) ?? "null"); return v?.stream === stream && Array.isArray(v.order) && v.order.every((t: unknown) => Number.isInteger(t) && Number(t) >= 0 && Number(t) < 34) ? v.order : []; }
   catch { return []; }
 }
-export function HandRow({ hand, stream, drawIndex, drawId, selected, suggested, canPick, dim, hidden, onPick, onSelect, onOrderChange, onIntegrate, canIntegrate, editable, replay }: {
+export function HandRow({ hand, stream, drawIndex, drawId, selected, suggested, canPick, dim, hidden, onPick, onDiscard, onSelect, onOrderChange, onIntegrate, canIntegrate, editable, replay }: {
   hand: number[]; stream: string; drawIndex: number; drawId: number;
   selected: number[]; suggested?: number; canPick: (index: number) => boolean;
   dim: (index: number) => boolean; hidden: (index: number) => boolean;
-  onPick: (index: number) => void; onSelect: (index: number) => void; onIntegrate: () => void; editable: boolean; replay: boolean;
+  onPick: (index: number) => void; onDiscard: (index: number) => void; onSelect: (index: number) => void; onIntegrate: () => void; editable: boolean; replay: boolean;
   canIntegrate: boolean;
   onOrderChange: (indices: number[]) => void;
 }) {
   const [layout, setLayout] = useState(() => ({ stream, order: savedOrder(stream) }));
-  const [manual, setManual] = useState(false);
-  const cards = orderedCards(hand, drawIndex, layout.stream === stream ? layout.order : savedOrder(stream));
+  const [manual, setManual] = useState(() => {
+    try { return localStorage.getItem(KEY + "-manual") === "1"; } catch { return false; }
+  });
+  const cards = orderedCards(hand, drawIndex, manual && !replay
+    ? (layout.stream === stream ? layout.order : savedOrder(stream))
+    : [...hand].sort((a, b) => a - b));
   const values = cards.map(c => c.tile), orderKey = values.join(",");
   const visualIndices = [...cards.map(c=>c.index),...(drawIndex>=0?[drawIndex]:[])];
   useEffect(() => { onOrderChange(visualIndices); }, [stream, visualIndices.join(",")]);
@@ -40,10 +44,14 @@ export function HandRow({ hand, stream, drawIndex, drawId, selected, suggested, 
   const selectedAt = selected.length === 1 ? cards.findIndex(c => c.index === selected[0]) : -1;
   const tile = (index: number, drawn = false) => <Tile tile={hand[index]} hidden={hidden(index)} selected={!replay && selected.includes(index)}
     suggested={!replay && suggested === hand[index]} dim={!manual && dim(index)} disabled={!(canPick(index) || manual && editable) || replay}
-    onClick={() => manual && editable ? onSelect(index) : onPick(index)} drawn={drawn} />;
+    onClick={() => manual && editable ? onSelect(index) : onPick(index)}
+    onDoubleClick={manual && editable && canPick(index) ? () => onDiscard(index) : undefined} drawn={drawn} />;
   return <>
     <div className="hand-tools">
-      <button aria-pressed={manual} disabled={!editable} onClick={() => setManual(v => !v)}>手动理牌{manual ? " · 开" : ""}</button>
+      <button aria-pressed={manual} disabled={!editable} onClick={() => {
+        try { localStorage.setItem(KEY + "-manual", manual ? "0" : "1"); } catch {}
+        setManual(!manual);
+      }}>手动理牌{manual ? " · 开" : ""}</button>
       <button disabled={!editable} onClick={() => setLayout({ stream, order: [...values].sort((a,b) => a-b) })}>自动排序</button>
       {manual && <>
         <button aria-label="选中的手牌左移" disabled={!editable || selectedAt <= 0} onClick={() => move(selectedAt, selectedAt-1)}>左移</button>
