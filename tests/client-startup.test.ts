@@ -125,7 +125,11 @@ test("Real client separates the draw, moves a hand tile, persists order and inte
     assert.equal(win.document.querySelectorAll(".hand-held .tile").length,14);assert.deepEqual(snapshot().players[0].hand,g.players[0].hand);
     assert.equal(snapshot().current,0);assert.equal(snapshot().discardCount,0);assert.equal(snapshot().drawState.separated,false);
     assert.equal(snapshot().events.at(-1).kind,"integrate");
-    button("做牌方向").click();await until(()=>!!win.document.querySelector('[aria-label="实时做牌方向"]'),"strategy tab");
+    assert.equal(win.document.querySelector("dialog[open]"),null);
+    button("做牌方向").click();await until(()=>!!win.document.querySelector(".table-tip"),"compact route preview");
+    assert.equal(win.document.querySelector('[aria-label="实时做牌方向"]'),null);
+    button("完整分析").click();await until(()=>!!win.document.querySelector('[aria-label="实时做牌方向"]'),"strategy tab");
+    assert.equal(win.document.querySelector(".table-tip"),null);
     assert.ok(win.document.querySelector(".threshold-note")!.textContent!.includes("8分起胡"));assert.ok(win.document.querySelectorAll(".route-card").length>0);
     assert.deepEqual(errors,[]);
   }finally{dom.window.close();}
