@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { EngineBootstrap } from "./EngineBootstrap";
 import {
@@ -30,13 +30,15 @@ import { BONUS, defaultConfig } from "./engine/types";
 import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
 import { Tile } from "./Tile";
 import { HandRow } from "./HandRow";
-import { ActionHints, StrategyPanel } from "./AssistantPanels";
+import { StrategyPanel } from "./AssistantPanels";
+import { ActionTip, AutoControls, HandTips, TableSheet, autoOff, automaticCommand } from "./TableHud";
 import { actionGuidance, buildAssistantReport } from "./engine/assistant";
 import { useTableFeedback } from "./feedback/useTableFeedback";
 import { eventLabel } from "./feedback/events";
 import { CenterFeedback } from "./feedback/CenterFeedback";
 import { voiceId, voiceKind } from "./feedback/voice";
 import "./style.css";
+import "./focus-table.css";
 import { useRoom } from "./online/useRoom";
 import { RoomPanel } from "./online/RoomPanel";
 import type { RoomCommand, RoomView } from "./online/protocol";
@@ -455,6 +457,12 @@ function App() {
     );
   const [paused, setPaused] = useState(false),
     [tab, setTab] = useState<"advice" | "strategy" | "log" | "rules">("advice");
+  const roomInPlay=!!online.room?.game;
+  useEffect(()=>{if(roomInPlay)setRoomsOpen(false);},[roomInPlay,online.session?.id]);
+  const [sheet,setSheet]=useState(false), [autoPrefs,setAutoPrefs]=useState(autoOff);
+  const openSheet=(t:typeof tab)=>{setTab(t);setSheet(true);};
+  const autoLatest=useRef<{key:string;run:()=>void}|null>(null), autoSent=useRef("");
+  useEffect(()=>{setAutoPrefs(autoOff);autoSent.current="";},[online.session?.id,localSession]);
   const [visualHandOrder, setVisualHandOrder] = useState<number[]>([]);
   const [replay, setReplay] = useState<Frame[] | null>(null),
     [replayIndex, setReplayIndex] = useState(0),
@@ -492,6 +500,7 @@ function App() {
     } catch {}
   }, [prefs]);
   const change = (fn: (g: Game) => void, _sfx = "discard", command?: RoomCommand) => {
+    autoLatest.current=null;
     if (online.session) {
       if (command) void online.send(command).then(ok => { if (ok) setSelected([]); });
       return;
@@ -610,6 +619,23 @@ function App() {
     const score = legal.some(a => a.type === "win") ? winScore(game, 0, !!ourTurn) : undefined;
     return actionGuidance(publicView(game, 0), legal, prefs.assistantStyle, score);
   }, [prefs.hints, game, replay, claim, ourTurn, playerActions, guidance, prefs.assistantStyle]);
+  const automatic=game && !paused && !setup && !replay &&
+    (!online.session || (online.connected && !online.busy && !online.room?.seats[0].autoplay))
+    ? automaticCommand(game,!!ourTurn,playerActions,claim,autoPrefs) : null;
+  const autoKey=automatic ? JSON.stringify([feedbackStream,online.room?.stage??game?.frames.length,automatic]) : "";
+  autoLatest.current=automatic?{key:autoKey,run:()=>{
+    if(automatic.type==="discard")change(g=>discard(g,0,automatic.tile,true),"discard",automatic);
+    else if(automatic.type==="claim")change(g=>respond(g,0,automatic.action),automatic.action.type,automatic);
+    else if(automatic.type==="act")change(g=>act(g,0,automatic.action),automatic.action.type,automatic);
+  }}:null;
+  useEffect(()=>{
+    if(!autoKey||autoSent.current===autoKey)return;
+    const timer=setTimeout(()=>{
+      if(autoLatest.current?.key!==autoKey)return;
+      autoSent.current=autoKey;autoLatest.current.run();
+    },550);
+    return ()=>clearTimeout(timer);
+  },[autoKey]);
   const display = game ? (replay ? replay[replayIndex] : snapshot(game)) : null;
   const hideWonHand = !!game && !replay && game.config.mode === "sichuan" &&
     game.phase !== "end" && game.players[0].won;
@@ -665,6 +691,7 @@ function App() {
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (
+        sheet || (e.target instanceof Element && e.target.closest(".table-tip, .table-toolbar, .tip-trigger, summary")) ||
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
         setup ||
@@ -690,6 +717,7 @@ function App() {
     URL.revokeObjectURL(u);
   }
   const openReplay = (frames: Frame[]) => {
+    setSheet(false);
     setReplay(frames);
     setReplayIndex(0);
     setReplayPlay(false);
@@ -735,13 +763,14 @@ function App() {
           </span>
           <button onClick={() => setRoomsOpen(v => !v)}>联机房间</button>
           <button disabled={!!online.session} onClick={() => { setCreateName(null); setSetup(true); }}>新牌桌</button>
-          <button className="text-button" onClick={() => setTab("rules")}>
+          <button onClick={()=>openSheet("advice")}>助手与牌谱</button>
+          <button className="text-button" onClick={() => openSheet("rules")}>
             规则
           </button>
         </div>
       </header>
       <main>
-        {(roomsOpen || online.session) && <RoomPanel room={online.room} active={!!online.session}
+        {(roomsOpen || (online.session && !roomInPlay)) && <RoomPanel room={online.room} active={!!online.session}
           busy={online.busy} connected={online.connected} error={online.error}
           onCreate={name => { setCreateName(name); setSetup(true); }}
           onJoin={(name, id) => void online.enter(name, undefined, id)} send={async c => {
@@ -760,7 +789,7 @@ function App() {
               </span>
             </h2>
           </div>
-          <div className="game-controls">
+          <details className="table-settings"><summary>对局设置</summary><div className="game-controls">
             <label>电脑
               <select aria-label="电脑智能程度" value={game?.config.aiDifficulty ?? config.aiDifficulty ?? "advanced"}
                 disabled={!!online.session && (!online.room?.isHost || online.busy)}
@@ -832,12 +861,12 @@ function App() {
               <option value={650}>标准</option>
               <option value={180}>快速</option>
             </select>
-          </div>
-        </div>
         {(feedback.voiceError || !feedback.supported) && <p className="voice-note" role="status">{feedback.voiceError || "此浏览器不支持语音播报；可继续正常打牌。"}</p>}
         {prefs.voice && feedback.supported && feedback.voicesLoaded && <p className="voice-current">
           {feedback.selectedVoice ? `当前音色：${feedback.selectedVoice.name}${voiceKind(feedback.selectedVoice) === "female" ? " · 女声" : " · 可换音色试听"}` : "未检测到可选中文音色，将尝试系统默认中文声音"}
         </p>}
+          </div></details>
+        </div>
         <div className="layout">
           <div className="table-column">
             <div className="table">
@@ -955,9 +984,6 @@ function App() {
                         <span className="round-delta">本局 {amount(display.players[0].roundDelta)}</span>
                       </b>
                     </div>
-                    {prefs.hints && !replay && !hideWonHand && !["end","exchange","void"].includes(game.phase) && <div className="plan-preview">
-                      {guidance ? <button onClick={()=>setTab("strategy")}>{guidance.routes[0] ? `做牌主线：${guidance.routes[0].name} · 目标还需补${guidance.routes[0].missing}张 · 查看番型与缺牌 →` : "暂无常见做牌主线 · 查看当前等待与门槛 →"}</button> : <span>{online.adviceError ? "做牌建议暂不可用，请查看助手提示" : "正在更新做牌方向…"}</span>}
-                    </div>}
                     <Melds p={display.players[0]} reveal={!hideWonHand} />
                     <HandRow hand={display.players[0].hand} stream={replay ? `${handStream}:replay:${replayIndex}` : handStream}
                       drawIndex={humanDrawIndex} drawId={display.drawState?.id ?? 0} selected={selected} suggested={analysis[0]?.tile}
@@ -975,12 +1001,16 @@ function App() {
                 </div>
               )}
             </div>
+            {game && !replay && !["end","exchange","void"].includes(game.phase) && !game.players[0].won && <div className="table-toolbar">
+              <AutoControls value={autoPrefs} change={v=>{autoSent.current="";setAutoPrefs(v);}} />
+              {prefs.hints && <HandTips report={guidance} advice={analysis[0]} waiting={waiting} details={()=>openSheet("strategy")} />}
+            </div>}
             <div className="action-bar" aria-live="polite">
               <div className="turn-status">
                 <span className={`status-dot ${ourTurn ? "you" : ""}`} />
                 <strong>{paused && !replay ? "对局已暂停" : status}</strong>
                 <span className="muted">{online.error || notice || saveWarning}</span>
-                {game && <ActionHints actions={actionHints} config={game.config} />}
+                <ActionTip actions={actionHints} />
               </div>
               <div className="actions">
                 {game && !replay && game.phase === "exchange" && (!online.session || (online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy)) && (
@@ -1198,7 +1228,7 @@ function App() {
               </section>
             )}
           </div>
-          <aside>
+          {sheet && <TableSheet close={()=>setSheet(false)}>
             <div className="aside-tabs">
               {(["advice", "strategy", "log", "rules"] as const).map((t) => (
                 <button
@@ -1421,7 +1451,7 @@ function App() {
             ) : (
               <RulesPanel config={game?.config ?? config} />
             )}
-          </aside>
+          </TableSheet>}
         </div>
         <footer>
           <span>一桌麻将 · 认真打牌，慢慢来。</span>
