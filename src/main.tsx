@@ -29,6 +29,7 @@ import { rules } from "./engine/rules";
 import { BONUS, defaultConfig } from "./engine/types";
 import type { Game, Config, Action, Frame, Player, PlayStyle, AiDifficulty } from "./engine/types";
 import { Tile } from "./Tile";
+import { TileLens, MissingTiles, tileFacts } from "./TableTileTips";
 import { HandRow } from "./HandRow";
 import { StrategyPanel } from "./AssistantPanels";
 import { ActionTip, AutoControls, HandTips, TableSheet, autoOff, automaticCommand } from "./TableHud";
@@ -607,6 +608,8 @@ function App() {
         .map((tile) => ({ tile, left: Math.max(0, 4 - k[tile]) })),
     };
   }, [game, prefs.hints]);
+  const tileView = useMemo(()=>game && !replay ? publicView(game,0) : null,[game,replay]);
+  const faceFacts = useMemo(()=>tileView && prefs.hints ? tileFacts(tileView,guidance,analysis[0],waiting) : [],[tileView,guidance,analysis,waiting,prefs.hints]);
   const playerActions = online.session ? online.room?.actions ?? [] : game ? ownActions(game, 0) : [];
   const claim =
     online.session ? online.room && !online.room.seats[0].autoplay ? online.room.claims : [] : game?.pending && game.pending.responses[0] === null
@@ -869,7 +872,7 @@ function App() {
         </div>
         <div className="layout">
           <div className="table-column">
-            <div className="table">
+            <TileLens facts={faceFacts} enabled={prefs.hints && !replay && game?.phase!=="end"}>
               <div className="table-topline">
                 <span className="round-badge">
                   第 {display?.round ?? game?.round ?? 1} 局
@@ -1000,17 +1003,17 @@ function App() {
                   <p>一张牌，一次选择。</p>
                 </div>
               )}
-            </div>
+            </TileLens>
             {game && !replay && !["end","exchange","void"].includes(game.phase) && !game.players[0].won && <div className="table-toolbar">
               <AutoControls value={autoPrefs} change={v=>{autoSent.current="";setAutoPrefs(v);}} />
-              {prefs.hints && <HandTips report={guidance} advice={analysis[0]} waiting={waiting} details={()=>openSheet("strategy")} />}
+              {prefs.hints && <><MissingTiles facts={faceFacts}/><HandTips report={guidance} advice={analysis[0]} waiting={waiting} details={()=>openSheet("strategy")} /></>}
             </div>}
             <div className="action-bar" aria-live="polite">
               <div className="turn-status">
                 <span className={`status-dot ${ourTurn ? "you" : ""}`} />
                 <strong>{paused && !replay ? "对局已暂停" : status}</strong>
                 <span className="muted">{online.error || notice || saveWarning}</span>
-                <ActionTip actions={actionHints} />
+                <ActionTip actions={actionHints} view={tileView} style={prefs.assistantStyle} routes={guidance?.routes} />
               </div>
               <div className="actions">
                 {game && !replay && game.phase === "exchange" && (!online.session || (online.room && !online.room.exchangeReady[0] && !online.room.seats[0].autoplay && !online.busy)) && (
