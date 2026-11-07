@@ -1,3 +1,4 @@
+import { explainCalls } from "./call-impact";
 import { counts, evaluate, suit, tileName, sortHand } from "./core";
 import { advise, discardRisk, knownCounts } from "./ai";
 import { ownActions, publicView, winScore } from "./game";
@@ -137,14 +138,14 @@ export function directionRoutes(v: PublicView): RouteAdvice[] {
   for(const route of routes.sort((a,b)=>a.missing-b.missing || Number(b.ron.legal)-Number(a.ron.legal) || b.ron.fan-a.ron.fan))if(!best.has(route.name))best.set(route.name,route);
   return [...best.values()].slice(0,3);
 }
-function discardBasis(v: PublicView, style: PlayStyle) {
+export function discardBasis(v: PublicView, style: PlayStyle) {
   if(v.hand.length%3!==2)return {v,discard:undefined as number|undefined};
   const choice=advise(v,{style,difficulty:"advanced"})[0];
   if(!choice)return {v,discard:undefined as number|undefined};
   const hand=[...v.hand];hand.splice(hand.indexOf(choice.tile),1);
   return {discard:choice.tile,v:{...v,hand,players:v.players.map((p,i)=>i===v.self?{...p,river:[...p.river,choice.tile]}:p)}};
 }
-function afterAction(v:PublicView,a:Action):PublicView {
+export function afterAction(v:PublicView,a:Action):PublicView {
   const hand=[...v.hand],melds=v.melds.map(m=>({...m,tiles:[...m.tiles]}));
   if(a.type==="addedKong"){
     hand.splice(hand.indexOf(a.tile!),1);const m=melds[a.meldIndex!];m.kind="kong";m.added=true;m.tiles.push(a.tile!);
@@ -188,7 +189,7 @@ export function actionGuidance(v:PublicView, actions:Action[], style:PlayStyle, 
   scored.push({utility:0,advice:{action:{type:"pass"},label:actions.some(a=>a.type==="pass")?"过": "继续摸打（需先出牌）",recommended:false,reasons:passReasons,executable:actions.some(a=>a.type==="pass")}});
   scored.sort((a,b)=>b.utility-a.utility);
   scored[0].advice.recommended=true;
-  return scored.map(r=>r.advice);
+  return explainCalls(v,scored.map(r=>r.advice),style);
 }
 const cache=new Map<string,AssistantReport>();
 export function buildAssistantReport(g:Game,seat:number,style:PlayStyle="balanced"):AssistantReport|null {

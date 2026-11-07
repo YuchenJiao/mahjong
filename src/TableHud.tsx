@@ -1,10 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { tileName } from "./engine/core";
+import { compareCalls } from "./engine/call-impact";
 import type { ActionAdvice, AssistantReport } from "./engine/assistant";
 import type { Advice } from "./engine/ai";
 import { allowedDiscards, hasSeparateDraw } from "./engine/game";
-import type { Action, Game } from "./engine/types";
+import type { Action, Game, PublicView, PlayStyle } from "./engine/types";
 import type { RoomCommand } from "./online/protocol";
 
 export type AutoPrefs = { discard: boolean; pass: boolean; win: boolean };
@@ -85,16 +86,6 @@ export function HandTips({report,advice,waiting,details}:{
   const useful=ready?waits:advice?.useful??waiting?.useful??[];
   const basis=ready?report?.basisDiscard:advice?.tile;
   return <div className="hand-tips" aria-label="牌局提示">
-    <TableTip label={ready?"听牌":"进张"}>
-      <strong>{ready?"听哪些牌":"有效进张"}</strong>
-      {basis!==undefined&&<p>打 {tileName(basis)} 后</p>}
-      {useful.length?<ul className="tip-tiles">{useful.map(u=>{
-        const w=waits.find(x=>x.tile===u.tile);
-        return <li key={u.tile}><b>{tileName(u.tile)}</b><span>{u.left?u.left+"张未见":"已无余张"}</span>
-          {w&&u.left>0&&<small>{w.ron.legal?w.self.legal?"点和／自摸":"点和达标":w.self.legal?"自摸达标":"未达胡牌门槛"}</small>}</li>;
-      })}</ul>:<p>当前没有可展示的进张。</p>}
-      {useful.length>0&&<p className="tip-foot">未见张数按已公开牌和你的手牌计算，可能在对手手里。</p>}
-    </TableTip>
     <TableTip label="做牌方向">{close=><>
       <strong>做牌方向</strong>
       {report?.routes.length?report.routes.slice(0,2).map(r=>{
@@ -106,13 +97,20 @@ export function HandTips({report,advice,waiting,details}:{
     </>}</TableTip>
   </div>;
 }
-export function ActionTip({actions}:{actions:ActionAdvice[]}) {
-  const best=actions.find(a=>a.recommended);
+export function ActionTip({actions,view,style,routes}:{actions:ActionAdvice[];view:PublicView|null;style:PlayStyle;routes?:AssistantReport["routes"]}) {
+  const result=useMemo(()=>view?compareCalls(view,actions,style,routes):null,[view,actions,style,routes]);
+  const best=result?.best??actions.find(a=>a.recommended);
   if(!best)return null;
-  return <TableTip label="操作建议">
-    <strong>建议：{best.label}{best.action.tiles?" "+best.action.tiles.map(tileName).join("、"):""}</strong>
-    <p>{best.reasons[0]}</p>
-    {best.reasons.length>1&&<details><summary>更多理由</summary>{best.reasons.slice(1).map((r,i)=><p key={i}>{r}</p>)}</details>}
-    {actions.filter(a=>a!==best).map((a,i)=><details key={i}><summary>{a.label}{a.action.tiles?" "+a.action.tiles.map(tileName).join("、"):""}</summary>{a.reasons.map((r,j)=><p key={j}>{r}</p>)}</details>)}
+  const label=(a:ActionAdvice)=>a.label+(a.action.tiles?" "+a.action.tiles.map(tileName).join("、"):a.action.tile!==undefined?" "+tileName(a.action.tile):"");
+  const detail=(a:ActionAdvice)=>{
+    const impact=result?.comparisons.get(a);
+    return <>{impact&&<><strong className={impact.worse?"call-caution":""}>{impact.headline}</strong>{impact.details.map((r,i)=><p key={i}>{r}</p>)}</>}
+      {a.reasons.filter(r=>r!==result?.before&&r!==impact?.headline&&!impact?.details.includes(r)).map((r,i)=><p key={i} className="tip-foot">{r}</p>)}</>;
+  };
+  return <TableTip label={"建议："+label(best)}>
+    <strong>建议：{label(best)}</strong>
+    {result?.before&&<p className="call-before">{result.before}</p>}
+    {detail(best)}
+    {actions.filter(a=>a!==best).map((a,i)=><details key={i} open={actions.length<=4&&!!result?.comparisons.has(a)}><summary>{label(a)}</summary>{detail(a)}</details>)}
   </TableTip>;
 }

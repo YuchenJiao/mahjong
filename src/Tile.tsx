@@ -165,6 +165,7 @@ export function Tile({
   return onClick ? (
     <button
       className={cls}
+      data-tile-face={!hidden && tile !== undefined ? tile : undefined}
       aria-label={label}
       aria-pressed={selected}
       disabled={disabled}
@@ -173,7 +174,7 @@ export function Tile({
       {face}
     </button>
   ) : (
-    <span className={cls} title={label} aria-label={label}>
+    <span className={cls} data-tile-face={!hidden && tile !== undefined ? tile : undefined} aria-label={label}>
       {face}
     </span>
   );
