@@ -460,10 +460,17 @@ function App() {
     [tab, setTab] = useState<"advice" | "strategy" | "log" | "rules">("advice");
   const roomInPlay=!!online.room?.game;
   useEffect(()=>{if(roomInPlay)setRoomsOpen(false);},[roomInPlay,online.session?.id]);
-  const [sheet,setSheet]=useState(false), [autoPrefs,setAutoPrefs]=useState(autoOff);
+  const autoRoundKey=JSON.stringify([online.session?.id??"solo",localSession,game?.round??0]);
+  const [autoSettings,setAutoSettings]=useState(()=>({round:autoRoundKey,value:autoOff}));
+  const autoPrefs=autoSettings.round===autoRoundKey?autoSettings.value:autoOff;
+  const setAutoPrefs=(value:typeof autoOff)=>setAutoSettings({round:autoRoundKey,value});
+  const [sheet,setSheet]=useState(false);
   const openSheet=(t:typeof tab)=>{setTab(t);setSheet(true);};
   const autoLatest=useRef<{key:string;run:()=>void}|null>(null), autoSent=useRef("");
-  useEffect(()=>{setAutoPrefs(autoOff);autoSent.current="";},[online.session?.id,localSession]);
+  useEffect(()=>{
+    setAutoSettings(previous=>previous.round===autoRoundKey?previous:{round:autoRoundKey,value:autoOff});
+    autoSent.current="";
+  },[autoRoundKey]);
   const [visualHandOrder, setVisualHandOrder] = useState<number[]>([]);
   const [replay, setReplay] = useState<Frame[] | null>(null),
     [replayIndex, setReplayIndex] = useState(0),
