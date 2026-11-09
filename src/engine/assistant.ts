@@ -1,3 +1,4 @@
+import { enhanceRoutes } from "./combination-routes";
 import { explainCalls } from "./call-impact";
 import { counts, evaluate, suit, tileName, sortHand } from "./core";
 import { advise, discardRisk, knownCounts } from "./ai";
@@ -56,7 +57,7 @@ function concealedTarget(v: PublicView, groups: Group[]): number[] | null {
   if (counts([...hand,...v.melds.flatMap(m=>m.tiles)]).some(n=>n>4)) return null;
   sortHand(hand); return hand;
 }
-export function directionRoutes(v: PublicView): RouteAdvice[] {
+function legacyDirectionRoutes(v: PublicView): RouteAdvice[] {
   const handCounts = counts(v.hand), known = knownCounts(v), limit = v.config.mode === "mcr" ? 34 : 27;
   const permitted = (t: number) => t < limit && (v.config.mode !== "sichuan" || suit(t) !== v.voidSuit);
   type Core = { name: string; groups: Group[]; extra?: Group[]; pairs?: number[] };
@@ -200,6 +201,10 @@ export function buildAssistantReport(g:Game,seat:number,style:PlayStyle="balance
   const basis=discardBasis(v,style),shanten=evaluate(basis.v.hand,basis.v.melds,v.config.mode==="mcr").shanten;
   const report:AssistantReport={shanten,basisDiscard:basis.discard,waits:shanten===0?winningWaits(basis.v):[],routes:directionRoutes(basis.v),actions:actionGuidance(v,legal,style,currentWin),
     eightPointMinimum:v.config.mode==="mcr"&&v.config.scoring&&v.config.mcrEightPointMinimum!==false,
-    notes:["目标距离是示例成牌还需补入的张数，不等于向听数；示例不保证可达。","示例分数已按实际番型互斥规则计算，可见绝张按当前公开牌判断；不预计杠上花、海底等未来事件番。"]};
+    notes:["目标距离是示例成牌还需补入的张数，不等于向听数；示例不保证可达。补齐概率采用未知牌均匀的自摸模型，不含吃碰点和，也不是整体胡牌率。候选搜索有数量上限，未列出不代表不存在。","示例分数已按实际番型互斥规则计算，可见绝张按当前公开牌判断；不预计杠上花、海底等未来事件番。"]};
   if(cache.size>=64)cache.clear();cache.set(key,structuredClone(report));return report;
+}
+
+export function directionRoutes(v:PublicView):RouteAdvice[] {
+  return enhanceRoutes(v,legacyDirectionRoutes(v),(hand,tile,self)=>exactScore(v,hand,v.melds,tile,self));
 }

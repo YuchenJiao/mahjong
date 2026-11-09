@@ -1,3 +1,4 @@
+import { scoreFormula } from "./engine/combination-routes";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { tileName } from "./engine/core";
@@ -91,8 +92,10 @@ export function HandTips({report,advice,waiting,details}:{
       {report?.routes.length?report.routes.slice(0,2).map(r=>{
         const odds=(r as typeof r & {odds?:{draws:number;probability:number}}).odds;
         return <div className="tip-route" key={r.name}><b>{r.name}</b><span>样例还需 {r.missing} 张</span>
+          {r.name.startsWith("小番组合")&&<small>{r.ron.legal?"点和":"自摸"}示例：{scoreFormula(r.ron.legal?r.ron:r.self)}</small>}
           {odds&&<small>{odds.draws}摸内补齐约 {odds.probability>0&&odds.probability<.001?"<0.1%":(odds.probability*100).toFixed(1)+"%"}</small>}</div>;
       }):<p>当前没有可展示的路线。</p>}
+      <p className="tip-foot">补齐概率只针对列出的示例，不是整条路线的胡牌率。</p>
       <button type="button" onClick={()=>{close();details();}}>完整分析</button>
     </>}</TableTip>
   </div>;
