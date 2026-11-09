@@ -1,3 +1,4 @@
+import { scoreFormula } from "./combination-routes";
 import { evaluate, suit, tileName } from "./core";
 import { afterAction, discardBasis, directionRoutes, winningWaits, type ActionAdvice, type RouteAdvice, type WaitAdvice } from "./assistant";
 import type { PlayStyle, PublicView } from "./types";
@@ -49,6 +50,16 @@ export function compareCalls(v: PublicView, actions: ActionAdvice[], style: Play
     else if(current && !retained)details.push(`这次未找到「${name(current)}」的达标示例；${target?`可改看「${name(target)}」`:"暂时没有明确的替代路线"}。`);
     if(current && retained)details.push(`可继续「${name(current)}」；${trend(current,retained)}。`);
     else if(target)details.push(`「${name(target)}」示例还缺 ${target.missing} 张。`);
+    if(current&&target&&v.config.mode==="mcr"&&v.config.scoring) {
+      const beforeScore=current.ron.legal?current.ron:current.self,afterScore=target.ron.legal?target.ron:target.self;
+      details.push("成牌示例计分（非当前得分）："+scoreFormula(beforeScore)+" → "+scoreFormula(afterScore)+"。");
+      const reduced=beforeScore.items.flatMap(f=>{
+        const next=afterScore.items.filter(x=>x.name===f.name).reduce((n,x)=>n+x.value*x.count,0);
+        const loss=f.value*f.count-next;return loss>0?[f.name+"减少 "+loss+"分"]:[];
+      });
+      if(reduced.length)details.push("新示例相较原示例："+reduced.join("、")+"；需以新示例的组合总分判断能否达标。");
+      if(current.ron.legal&&!target.ron.legal&&target.self.legal)details.push("新的示例只能自摸达标，点和未达门槛。");
+    }
     const lost=baseWaits.filter(active).flatMap(w=>{
       const n=nextWaits.find(x=>x.tile===w.tile);
       const methods=[w.ron.legal&&!n?.ron.legal?"点和":"",w.self.legal&&!n?.self.legal?"自摸":""].filter(Boolean).join("／");
@@ -61,7 +72,11 @@ export function compareCalls(v: PublicView, actions: ActionAdvice[], style: Play
     else if(nextShanten===0)details.push("结构听牌，但没有仍有未见张且能按当前规则胡的常规等待。");
     else details.push(`向听：${beforeShanten} → ${nextShanten}。`);
     if(isKong)details.push("补牌及其后的出牌会改变结果，未把未知补牌或事件番算进去。");
-    const worse=beforeLeft>afterLeft || (!!obstacle && afterLeft<=beforeLeft && nextShanten>=beforeShanten);
+    const beforeOdds=current&&odds(current),afterOdds=target&&odds(target);
+    const probabilityDrop=!!beforeOdds&&!!afterOdds&&beforeOdds.draws===afterOdds.draws&&beforeOdds.probability>0&&
+      afterOdds.probability<beforeOdds.probability*(style==="attack"?.35:style==="defense"?.85:.6);
+    if(probabilityDrop)details.push("按当前候选，操作后的达标示例更难补齐，宜保留原计划或再观察。");
+    const worse=beforeLeft>afterLeft || probabilityDrop || (!!obstacle && afterLeft<=beforeLeft && nextShanten>=beforeShanten);
     return [item,{headline,details,worse}] as const;
   }));
   const pass=actions.find(a=>a.action.type==="pass");

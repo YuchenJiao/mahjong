@@ -1,3 +1,4 @@
+import { routeEstimate, scoreFormula } from "./engine/combination-routes";
 import type { ActionAdvice, AssistantReport } from "./engine/assistant";
 import type { Config, WinScore } from "./engine/types";
 import { tileName } from "./engine/core";
@@ -34,6 +35,8 @@ export function StrategyPanel({ report, config }: { report: AssistantReport; con
     {report.routes.length?report.routes.map((route,i)=><article className="route-card" key={route.name}>
       <div className="route-heading"><strong>{i===0?"优先参考：":"备选："}{route.name}</strong><span>还需补入{route.missing}张</span></div>
       <p>点和示例 {scoreText(route.ron,config)}{route.ron.legal?"":"（未达门槛）"} · 自摸示例 {scoreText(route.self,config)}{route.self.legal?"":"（未达门槛）"}</p>
+      {config.mode==="mcr"&&config.scoring&&<p className="route-formula">{route.ron.legal?"点和成牌示例：":"自摸成牌示例："}{scoreFormula(route.ron.legal?route.ron:route.self)}</p>}
+      {routeEstimate(route)&&<p className="route-estimate">{routeEstimate(route)}</p>}
       <h4>适合保留</h4><div className="plan-tiles">{route.keep.map((t,k)=><Tile key={k} tile={t} small />)}</div>
       <h4>示例尚缺</h4><div className="needed-tiles">{route.needed.map(n=><span key={n.tile}>{tileName(n.tile)}×{n.count}<small>未见约{n.left}张</small></span>)}</div>
       <details><summary>查看成牌示例与番种</summary>
