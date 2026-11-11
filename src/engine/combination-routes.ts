@@ -33,24 +33,22 @@ export function completionProbability(pool:number,needs:{count:number;left:numbe
 export function scoreFormula(score:WinScore) {
   return score.items.map(f=>f.name+" "+f.value*f.count).join("＋")+"＝"+score.fan+"分";
 }
+export function routeScore(r:RouteAdvice){
+  return [r.ron,r.self].find(s=>s.legal&&s.items.some(f=>f.name===r.name))??(r.ron.legal?r.ron:r.self);
+}
 export function routeEstimate(route:RouteAdvice) {
   const odds=(route as RouteAdvice & {odds?:RouteOdds}).odds;
   if(!odds)return "";
   const p=odds.probability>0&&odds.probability<.001?"<0.1%":(odds.probability*100).toFixed(1)+"%";
   return "未来"+odds.draws+"次自摸补齐此示例缺牌："+p+"（模型估计，非整体胡牌率）";
 }
-const cache=new Map<string,PlannedRoute[]>();
-export function enhanceRoutes(v:PublicView,existing:RouteAdvice[],score:Score):RouteAdvice[] {
+export function enhanceRoutes(v:PublicView,existing:RouteAdvice[],score:Score,all=false):RouteAdvice[] {
   if(v.config.mode!=="mcr"||!v.config.scoring)return existing;
-  const key=JSON.stringify([v,existing]),old=cache.get(key);
-  if(old)return structuredClone(old);
   const owned=counts(v.hand),fixed=counts(v.melds.flatMap(m=>m.tiles)),known=knownCounts(v);
   const left=known.map(n=>Math.max(0,4-n)),pool=left.reduce((a,b)=>a+b,0);
   const active=v.players.filter(p=>!p.won).length;
   const draws=Math.min(8,Math.ceil(v.remaining/Math.max(1,active)));
-  const odds=(r:RouteAdvice):PlannedRoute=>({...r,odds:{
-    draws,probability:completionProbability(pool,r.needed,draws)
-  }});
+  const odds=(r:RouteAdvice):PlannedRoute=>({...r,odds:(r as Partial<PlannedRoute>).odds??{draws,probability:completionProbability(pool,r.needed,draws)}});
   const legal=(s:WinScore)=>s.legal&&s.items.length>0;
   const routes:RouteAdvice[]=[...existing];
   const groups=[
@@ -134,21 +132,14 @@ export function enhanceRoutes(v:PublicView,existing:RouteAdvice[],score:Score):R
     }
     if(best)routes.push(best);
   }
+  const namedValue=(r:RouteAdvice)=>routeScore(r).items.find(f=>r.name.includes(f.name))?.value??0;
   const ranked=routes.filter(r=>r.needed.every(n=>n.count<=left[n.tile]))
-    .map(odds).sort((a,b)=>
-      b.odds.probability-a.odds.probability||
-      a.missing-b.missing||
-      Number(b.ron.legal)-Number(a.ron.legal)||
-      b.ron.fan-a.ron.fan||a.name.localeCompare(b.name)
-    );
+    .map(odds).sort((a,b)=>b.odds.probability-a.odds.probability||a.missing-b.missing||Number(b.ron.legal)-Number(a.ron.legal)||routeScore(b).fan-routeScore(a).fan||namedValue(b)-namedValue(a)||a.name.localeCompare(b.name));
   const byName=new Map<string,PlannedRoute>();
   for(const r of ranked)if(!byName.has(r.name))byName.set(r.name,r);
+  if(all)return [...byName.values()];
   const result=[...byName.values()].slice(0,4);
   const combo=[...byName.values()].find(r=>r.name.startsWith("小番组合"));
-  if(combo&&!result.some(r=>r.name===combo.name)){
-    if(result.length===4)result.pop();result.push(combo);
-  }
-  if(cache.size>=96)cache.clear();
-  cache.set(key,structuredClone(result));
+  if(combo&&!result.some(r=>r.name===combo.name)){if(result.length===4)result.pop();result.push(combo);}
   return result;
 }
