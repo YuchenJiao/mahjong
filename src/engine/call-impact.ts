@@ -1,4 +1,4 @@
-import { scoreFormula } from "./combination-routes";
+import { routeScore, scoreFormula } from "./combination-routes";
 import { evaluate, suit, tileName } from "./core";
 import { afterAction, discardBasis, directionRoutes, winningWaits, type ActionAdvice, type RouteAdvice, type WaitAdvice } from "./assistant";
 import type { PlayStyle, PublicView } from "./types";
@@ -9,7 +9,7 @@ const name = (r?: RouteAdvice) => r?.name.replace(/^现有听牌 · /,"") ?? "�
 const clean = (r: RouteAdvice) => /门前清|不求人/.test(name(r));
 const locked = (r: RouteAdvice, v: PublicView): string | undefined => {
   const open = v.melds.filter(m=>!m.concealed), label = name(r);
-  if (/十三幺|全不靠|七星不靠|七对|连七对/.test(label) && v.melds.length) return "这个牌型不能有已固定的吃、碰或杠";
+  if (/十三幺|全不靠|七星不靠|七对|连七对|九莲宝灯/.test(label) && v.melds.length) return "这个牌型不能有已固定的吃、碰或杠";
   if (/碰碰[和胡]/.test(label) && v.melds.some(m=>m.kind==="chow")) return "顺子副露与碰碰和需要的刻子或杠冲突";
   if ((clean(r) || /四暗刻/.test(label)) && open.length) return "副露破坏了原牌型的门清或全暗刻条件";
   if (/一色/.test(label) && !/双龙|同顺|步高|同刻/.test(label)) {
@@ -41,7 +41,7 @@ export function compareCalls(v: PublicView, actions: ActionAdvice[], style: Play
     const isKong=/kong$/i.test(a.type), nextWaits=winningWaits(next.v), routes=directionRoutes(next.v);
     const nextShanten=evaluate(next.v.hand,next.v.melds,v.config.mode==="mcr").shanten;
     const obstacle=current&&locked(current,next.v);
-    const retained=current&&!obstacle?routes.find(r=>same(current,r)):undefined;
+    const retained=current&&!obstacle?directionRoutes(next.v,true).find(r=>same(current,r)):undefined;
     const target=retained??routes[0], beforeLeft=total(baseWaits), afterLeft=total(nextWaits);
     const prefix=isKong?"补牌前":next.discard!==undefined?`若打${tileName(next.discard)}`:"操作后";
     const headline=`${prefix}：${obstacle?"需换方向 → ":""}${name(target)}`;
@@ -51,7 +51,7 @@ export function compareCalls(v: PublicView, actions: ActionAdvice[], style: Play
     if(current && retained)details.push(`可继续「${name(current)}」；${trend(current,retained)}。`);
     else if(target)details.push(`「${name(target)}」示例还缺 ${target.missing} 张。`);
     if(current&&target&&v.config.mode==="mcr"&&v.config.scoring) {
-      const beforeScore=current.ron.legal?current.ron:current.self,afterScore=target.ron.legal?target.ron:target.self;
+      const beforeScore=routeScore(current),afterScore=routeScore(target);
       details.push("成牌示例计分（非当前得分）："+scoreFormula(beforeScore)+" → "+scoreFormula(afterScore)+"。");
       const reduced=beforeScore.items.flatMap(f=>{
         const next=afterScore.items.filter(x=>x.name===f.name).reduce((n,x)=>n+x.value*x.count,0);

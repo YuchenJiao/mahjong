@@ -1,3 +1,4 @@
+import { tileName as mjFanCatalogTileName } from "./engine/core";
 import { routeEstimate, scoreFormula } from "./engine/combination-routes";
 import type { ActionAdvice, AssistantReport } from "./engine/assistant";
 import type { Config, WinScore } from "./engine/types";
@@ -47,5 +48,10 @@ export function StrategyPanel({ report, config }: { report: AssistantReport; con
       </details>
     </article>):<p>这轮未找到合适的常见示例路线，不代表无法胡牌；可结合向听、活张和实际等待调整。</p>}
     <p className="strategy-limits">{report.notes.join(" ")}</p>
-  </section>;
+
+    {report.fanCatalog&&<details className="fan-catalog"><summary>查看全部番种与成立条件</summary>
+      <p>达标示例来自当前可见牌和计分器；未找到示例不代表这个番种无法做成。</p>
+      <ul>{report.fanCatalog.map(f=><li key={f.name}><strong>{f.name} {f.value}分</strong> · {f.condition??(f.route?"达标示例还缺 "+f.missing+" 张："+(f.needed?.map(n=>mjFanCatalogTileName(n.tile)+"×"+n.count+"（未见"+n.left+"）").join("、")||"已齐"):"本次未找到达标示例")}</li>)}</ul>
+    </details>}
+</section>;
 }

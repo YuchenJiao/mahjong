@@ -129,7 +129,7 @@ function usefulTiles(v: PublicView, h: Tile[], melds: Meld[], known: number[], e
   return e.useful.filter(t => valid(t) && t < (v.config.mode === "mcr" ? 34 : 27) &&
     (v.config.mode !== "sichuan" || suit(t) !== v.voidSuit))
     .filter(t => !(e.shanten === 0 && v.config.mode === "mcr" && v.config.scoring && v.config.mcrEightPointMinimum !== false) ||
-      rawScore(h, melds, t, 1 | (known[t] - concealed[t] >= 3 ? 2 : 0), v.seat, v.wind).total >= 8)
+      [1,0].some(flag=>rawScore(h, melds, t, flag | (known[t] - concealed[t] >= 3 ? 2 : 0), v.seat, v.wind).total >= 8))
     .map(tile => ({ tile, left: Math.max(0, 4 - known[tile]) }));
 }
 function followup(v: PublicView, h: Tile[], known: number[], draws: Advice["useful"]) {
